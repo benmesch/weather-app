@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -268,7 +269,8 @@ def api_history():
 # ── Startup ───────────────────────────────────────────────────────────
 
 def _startup():
-    log.info("Running startup forecast fetch...")
+    """Run initial data fetches in a background thread so Flask starts immediately."""
+    log.info("Running startup forecast fetch (background)...")
     _refresh_all_forecasts()
     # Backfill history for any locations missing it
     history = _load_history()
@@ -276,10 +278,11 @@ def _startup():
         if loc.key not in history or not history[loc.key]:
             log.info("Backfilling history for %s", loc.name)
             _backfill_history(loc)
+    log.info("Startup fetch complete.")
 
 
 if __name__ == "__main__":
-    _startup()
+    threading.Thread(target=_startup, daemon=True).start()
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(_scheduled_5am, "cron", hour=5, minute=0)

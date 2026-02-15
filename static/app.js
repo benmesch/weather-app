@@ -110,7 +110,7 @@ function _renderDashboard() {
             <div class="location-card" data-lat="${loc.lat}" data-lon="${loc.lon}">
                 <div class="loc-card-top">
                     <div>
-                        <div class="loc-card-name">${_esc(loc.name)}</div>
+                        <div class="loc-card-name">${_esc(_displayName(loc))}</div>
                         <div class="loc-card-region">${_esc(loc.region || "")}</div>
                         <div class="loc-card-desc">${_esc(cur.weather_desc || "")}</div>
                     </div>
@@ -130,7 +130,7 @@ function _renderDashboard() {
             <div class="location-card" data-lat="${loc.lat}" data-lon="${loc.lon}">
                 <div class="loc-card-top">
                     <div>
-                        <div class="loc-card-name">${_esc(loc.name)}</div>
+                        <div class="loc-card-name">${_esc(_displayName(loc))}</div>
                         <div class="loc-card-region">${_esc(loc.region || "")}</div>
                     </div>
                     <div class="loading-spinner"></div>
@@ -175,7 +175,7 @@ function _renderDetail() {
     const loc = _activeLocation;
     if (!loc) return;
 
-    document.getElementById("header-title").textContent = loc.name;
+    document.getElementById("header-title").textContent = _displayName(loc);
     document.getElementById("back-btn").classList.remove("hidden");
     document.getElementById("add-btn").classList.add("hidden");
 
@@ -436,7 +436,7 @@ async function _openHistory(loc) {
     const content = document.getElementById("history-content");
     const title = document.getElementById("history-title");
 
-    title.textContent = `${loc.name} — 60-Day History`;
+    title.textContent = `${_displayName(loc)} — 60-Day History`;
     content.innerHTML = `<div class="loading"><div class="loading-spinner"></div></div>`;
     overlay.classList.remove("hidden");
 
@@ -651,6 +651,7 @@ function _openSettings() {
                 <button class="settings-move-btn" data-idx="${i}" data-dir="up" ${i === 0 ? "disabled" : ""} aria-label="Move up">&uarr;</button>
                 <button class="settings-move-btn" data-idx="${i}" data-dir="down" ${i === len - 1 ? "disabled" : ""} aria-label="Move down">&darr;</button>
             </div>
+            <input type="text" class="settings-emoji-input" data-idx="${i}" value="${_esc(loc.emoji || "")}" placeholder="+" maxlength="2" aria-label="Emoji">
             <div class="settings-loc-info">
                 <div class="settings-loc-name">${_esc(loc.name)}</div>
                 <div class="settings-loc-region">${_esc([loc.region, loc.country].filter(Boolean).join(", "))}</div>
@@ -681,6 +682,15 @@ function _openSettings() {
             _locations.splice(idx, 1);
             await _saveLocations();
             _openSettings(); // Re-render
+            _renderDashboard();
+        });
+    });
+
+    container.querySelectorAll(".settings-emoji-input").forEach(input => {
+        input.addEventListener("change", async () => {
+            const idx = parseInt(input.dataset.idx);
+            _locations[idx].emoji = input.value.trim() || "";
+            await _saveLocations();
             _renderDashboard();
         });
     });
@@ -760,6 +770,10 @@ function _registerSW() {
 }
 
 // ── Utilities ──────────────────────────────────────────────────
+function _displayName(loc) {
+    return loc.emoji ? `${loc.emoji} ${loc.name}` : loc.name;
+}
+
 function _esc(str) {
     const d = document.createElement("div");
     d.textContent = str;
