@@ -26,7 +26,8 @@ def fetch_weather(location):
         "temperature_unit": "fahrenheit",
         "windspeed_unit": "mph",
         "precipitation_unit": "inch",
-        "forecast_days": 3,
+        "forecast_days": 14,
+        "forecast_hours": 72,
         "current": ",".join([
             "temperature_2m", "apparent_temperature", "relative_humidity_2m",
             "wind_speed_10m", "wind_direction_10m", "precipitation",
@@ -35,7 +36,7 @@ def fetch_weather(location):
         "hourly": ",".join([
             "temperature_2m", "apparent_temperature", "precipitation_probability",
             "precipitation", "weather_code", "wind_speed_10m", "wind_direction_10m",
-            "relative_humidity_2m", "uv_index", "is_day",
+            "relative_humidity_2m", "uv_index", "is_day", "cloud_cover",
         ]),
         "daily": ",".join([
             "temperature_2m_max", "temperature_2m_min", "weather_code",
@@ -215,6 +216,7 @@ def parse_weather(raw, aqi_raw, location):
             humidity=_safe_get(hourly_data, "relative_humidity_2m", i, 0),
             uv_index=_safe_get(hourly_data, "uv_index", i, 0),
             is_day=is_day,
+            cloud_cover=_safe_get(hourly_data, "cloud_cover", i, None),
         ))
 
     # Daily

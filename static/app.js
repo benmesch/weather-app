@@ -6,12 +6,15 @@ let _allCurrent = {};        // key -> current conditions dict
 let _activeLocation = null;  // Location obj or null (null = dashboard)
 let _activeWeather = null;   // full WeatherData for active location
 let _searchTimeout = null;
+let _historyChartMeta = null;  // stored chart geometry for tap-to-inspect
+let _allAlerts = {};           // key -> alert array
 
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
     await _loadSettings();
     _renderView();
     _refreshCurrent();
+    _refreshAlerts();
     _bindGlobalEvents();
     _registerSW();
 });
@@ -48,6 +51,20 @@ async function _refreshCurrent() {
     } catch (e) {
         console.error("Failed to refresh current", e);
     }
+}
+
+async function _refreshAlerts() {
+    for (const loc of _locations) {
+        try {
+            const resp = await fetch(`/api/alerts?lat=${loc.lat}&lon=${loc.lon}`);
+            const alerts = await resp.json();
+            const key = `${loc.lat},${loc.lon}`;
+            _allAlerts[key] = Array.isArray(alerts) ? alerts : [];
+        } catch (e) {
+            console.error("Failed to fetch alerts", e);
+        }
+    }
+    if (!_activeLocation) _renderDashboard();
 }
 
 async function _loadWeather(loc) {
@@ -106,8 +123,11 @@ function _renderDashboard() {
             const temp = Math.round(cur.temperature || 0);
             const hi = cur.today_high != null ? Math.round(cur.today_high) : "--";
             const lo = cur.today_low != null ? Math.round(cur.today_low) : "--";
+            const alerts = _allAlerts[key] || [];
+            const alertBadge = alerts.length ? `<div class="loc-card-alert ${_alertSeverityClass(alerts)}">${_esc(alerts[0].event)}${alerts.length > 1 ? ` +${alerts.length - 1}` : ""}</div>` : "";
             html += `
             <div class="location-card" data-lat="${loc.lat}" data-lon="${loc.lon}">
+                ${alertBadge}
                 <div class="loc-card-top">
                     <div>
                         <div class="loc-card-name">${_esc(_displayName(loc))}</div>
@@ -123,6 +143,8 @@ function _renderDashboard() {
                     <span>H:${hi}° L:${lo}°</span>
                     <span>Feels ${Math.round(cur.feels_like || 0)}°</span>
                     <span>Wind ${Math.round(cur.wind_speed || 0)} mph</span>
+                    <span>${Math.round(cur.humidity || 0)}% Hum</span>
+                    ${(cur.precipitation || 0) > 0 ? `<span class="loc-card-precip">${cur.precipitation}" rain</span>` : ""}
                 </div>
             </div>`;
         } else {
@@ -187,6 +209,9 @@ function _renderDetail() {
     const w = _activeWeather;
     let html = "";
 
+    // Weather alerts
+    html += _renderAlerts(w);
+
     // Current conditions
     html += _renderCurrent(w);
 
@@ -195,6 +220,9 @@ function _renderDetail() {
 
     // Hourly
     html += _renderHourly(w);
+
+    // Sun & Moon
+    html += _renderSunMoon(w);
 
     // Daily
     html += _renderDaily(w);
@@ -218,6 +246,38 @@ function _renderDetail() {
     document.getElementById("history-btn")?.addEventListener("click", () => _openHistory(loc));
 }
 
+function _renderAlerts(w) {
+    const alerts = w.alerts || [];
+    if (!alerts.length) return "";
+
+    let html = `<div class="section-title">Weather Alerts</div>`;
+    for (const a of alerts) {
+        const sev = (a.severity || "").toLowerCase();
+        const sevClass = (sev === "extreme" || sev === "severe") ? "alert-severe"
+            : sev === "moderate" ? "alert-moderate" : "alert-minor";
+        const onset = a.onset ? new Date(a.onset).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+        const expires = a.expires ? new Date(a.expires).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+        html += `
+        <div class="alert-card ${sevClass}">
+            <div class="alert-header">
+                <span class="alert-event">${_esc(a.event)}</span>
+                <span class="alert-severity">${_esc(a.severity)}</span>
+            </div>
+            ${a.headline ? `<div class="alert-headline">${_esc(a.headline)}</div>` : ""}
+            ${onset || expires ? `<div class="alert-times">${onset ? `From: ${onset}` : ""}${onset && expires ? " &mdash; " : ""}${expires ? `Until: ${expires}` : ""}</div>` : ""}
+            ${a.description ? `<details class="alert-details"><summary>Details</summary><p>${_esc(a.description)}</p>${a.instruction ? `<p><strong>Instructions:</strong> ${_esc(a.instruction)}</p>` : ""}</details>` : ""}
+        </div>`;
+    }
+    return html;
+}
+
+function _alertSeverityClass(alerts) {
+    const severities = alerts.map(a => (a.severity || "").toLowerCase());
+    if (severities.includes("extreme") || severities.includes("severe")) return "alert-badge-severe";
+    if (severities.includes("moderate")) return "alert-badge-moderate";
+    return "alert-badge-minor";
+}
+
 function _renderCurrent(w) {
     const c = w.current;
     if (!c) return "";
@@ -227,11 +287,37 @@ function _renderCurrent(w) {
     const icon = c.weather_icon || "";
     const desc = c.weather_desc || "";
 
-    // Sunrise/sunset from daily
-    let sunrise = "", sunset = "";
+    // Forecast text — show first 3 periods (e.g. "Tonight" + "Sunday" + "Sunday Night")
+    let forecastHtml = "";
+    if (w.forecast_text && w.forecast_text.length) {
+        const count = Math.min(w.forecast_text.length, 3);
+        for (let fi = 0; fi < count; fi++) {
+            const p = w.forecast_text[fi];
+            forecastHtml += `<div class="current-forecast-text"><strong>${_esc(p.name)}:</strong> ${_esc(p.detailed)}</div>`;
+        }
+    }
+
+    // Visibility formatting
+    let visStr = "--";
+    if (c.visibility != null) {
+        const visMi = c.visibility / 1609.34;
+        visStr = visMi >= 10 ? "10+ mi" : visMi.toFixed(1) + " mi";
+    }
+
+    // Precipitation
+    const precipVal = c.precipitation || 0;
+
+    // Sunrise/sunset for current card
+    let sunrise = "", sunset = "", daylight = "";
     if (w.daily && w.daily.length) {
         sunrise = _formatTime(w.daily[0].sunrise);
         sunset = _formatTime(w.daily[0].sunset);
+        const riseMs = new Date(w.daily[0].sunrise).getTime();
+        const setMs = new Date(w.daily[0].sunset).getTime();
+        if (riseMs && setMs) {
+            const diffMin = Math.round((setMs - riseMs) / 60000);
+            daylight = `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`;
+        }
     }
 
     return `
@@ -240,7 +326,8 @@ function _renderCurrent(w) {
         <div class="current-temp">${temp}°</div>
         <div class="current-desc">${_esc(desc)}</div>
         <div class="current-feels">Feels like ${feels}°</div>
-        ${sunrise ? `<div class="sun-times"><span>Sunrise ${sunrise}</span><span>Sunset ${sunset}</span></div>` : ""}
+        ${sunrise ? `<div class="sun-times"><span>Sunrise ${sunrise}</span>${daylight ? `<span class="sun-daylight">${daylight}</span>` : ""}<span>Sunset ${sunset}</span></div>` : ""}
+        ${forecastHtml}
         <div class="current-details">
             <div class="current-detail-item">
                 <div class="current-detail-label">Wind</div>
@@ -253,6 +340,18 @@ function _renderCurrent(w) {
             <div class="current-detail-item">
                 <div class="current-detail-label">UV Index</div>
                 <div class="current-detail-value">${c.uv_index != null ? Math.round(c.uv_index) : "--"}</div>
+            </div>
+            ${c.cloud_cover != null ? `<div class="current-detail-item">
+                <div class="current-detail-label">Cloud Cover</div>
+                <div class="current-detail-value">${Math.round(c.cloud_cover)}%</div>
+            </div>` : ""}
+            <div class="current-detail-item">
+                <div class="current-detail-label">Visibility</div>
+                <div class="current-detail-value">${visStr}</div>
+            </div>
+            <div class="current-detail-item">
+                <div class="current-detail-label">Precip</div>
+                <div class="current-detail-value">${precipVal > 0 ? precipVal + '"' : "None"}</div>
             </div>
         </div>
     </div>`;
@@ -312,9 +411,20 @@ function _renderHourly(w) {
     // Show up to 48 hours
     const hours = w.hourly.slice(startIdx, startIdx + 48);
     let items = "";
+    let prevDateStr = "";
     for (let i = 0; i < hours.length; i++) {
         const h = hours[i];
+        const hDate = new Date(h.time);
+        const dateStr = hDate.toDateString();
         const isNow = i === 0;
+
+        // Insert day separator when date changes (skip for the first "Now" item)
+        if (dateStr !== prevDateStr && !isNow) {
+            const dayLabel = hDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+            items += `<div class="hourly-day-sep"><span>${dayLabel}</span></div>`;
+        }
+        prevDateStr = dateStr;
+
         const time = isNow ? "Now" : _formatTime(h.time);
         const temp = Math.round(h.temperature || 0);
         const feels = Math.round(h.feels_like || 0);
@@ -324,16 +434,134 @@ function _renderHourly(w) {
         <div class="hourly-item${isNow ? " now" : ""}">
             <span class="hourly-time">${time}</span>
             <span class="hourly-icon">${h.weather_icon || ""}</span>
+            <div class="hourly-precip-bar"><div class="hourly-precip-fill" style="height:${precip}%"></div></div>
             <span class="hourly-temp">${temp}°</span>
             ${showFeels ? `<span class="hourly-feels">${feels}°</span>` : ""}
             ${precip > 0 ? `<span class="hourly-precip">${precip}%</span>` : ""}
-            ${h.wind_speed >= 10 ? `<span class="hourly-wind">${Math.round(h.wind_speed)}mph</span>` : ""}
+            ${h.wind_speed >= 5 ? `<span class="hourly-wind">${Math.round(h.wind_speed)} ${h.wind_direction || ""}</span>` : ""}
+            ${h.cloud_cover != null && h.cloud_cover >= 50 ? `<span class="hourly-cloud">${Math.round(h.cloud_cover)}%☁</span>` : ""}
         </div>`;
     }
 
     return `
     <div class="section-title">Hourly Forecast</div>
     <div class="hourly-card"><div class="hourly-scroll">${items}</div></div>`;
+}
+
+function _renderSunMoon(w) {
+    const sm = w.sun_moon || {};
+    const sun = sm.sun || {};
+    const moon = sm.moon || {};
+
+    // Fallback to Open-Meteo sunrise/sunset if USNO not available
+    let sunRise = sun.rise || "";
+    let sunSet = sun.set || "";
+    if (!sunRise && w.daily && w.daily.length) {
+        sunRise = _formatTime(w.daily[0].sunrise);
+        sunSet = _formatTime(w.daily[0].sunset);
+    }
+
+    // Compute daylight hours
+    let daylight = "";
+    if (sunRise && sunSet) {
+        // Parse HH:MM format from USNO
+        const toMin = (t) => {
+            // Handle both "07:02" and "7:02AM" formats
+            const parts = t.match(/(\d+):(\d+)/);
+            if (!parts) return 0;
+            let h = parseInt(parts[1]);
+            let m = parseInt(parts[2]);
+            // If from Open-Meteo _formatTime (has AM/PM), convert
+            if (/PM/i.test(t) && h < 12) h += 12;
+            if (/AM/i.test(t) && h === 12) h = 0;
+            return h * 60 + m;
+        };
+        // For USNO times (24h format), use directly; for Open-Meteo ISO, use Date
+        let diffMin;
+        if (w.daily && w.daily.length && w.daily[0].sunrise) {
+            const riseMs = new Date(w.daily[0].sunrise).getTime();
+            const setMs = new Date(w.daily[0].sunset).getTime();
+            diffMin = Math.round((setMs - riseMs) / 60000);
+        } else {
+            diffMin = toMin(sunSet) - toMin(sunRise);
+        }
+        if (diffMin > 0) {
+            daylight = `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`;
+        }
+    }
+
+    // Moon phase emoji
+    const phaseEmoji = _moonPhaseEmoji(moon.phase);
+
+    // Format USNO times (HH:MM 24h) to 12h
+    const fmt12 = (t) => {
+        if (!t) return "--";
+        const parts = t.match(/(\d+):(\d+)/);
+        if (!parts) return t;
+        let h = parseInt(parts[1]);
+        const m = parts[2];
+        const ap = h >= 12 ? "PM" : "AM";
+        h = h % 12 || 12;
+        return m === "00" ? `${h}${ap}` : `${h}:${m}${ap}`;
+    };
+
+    const sunRiseFmt = sun.rise ? fmt12(sun.rise) : sunRise;
+    const sunSetFmt = sun.set ? fmt12(sun.set) : sunSet;
+    const moonRiseFmt = fmt12(moon.rise);
+    const moonSetFmt = fmt12(moon.set);
+    const dawn = sun.dawn ? fmt12(sun.dawn) : "";
+    const dusk = sun.dusk ? fmt12(sun.dusk) : "";
+
+    return `
+    <div class="section-title">Sun & Moon</div>
+    <div class="sun-moon-card">
+        <div class="sun-moon-row">
+            <div class="sun-moon-col">
+                <div class="sun-moon-label">Sunrise</div>
+                <div class="sun-moon-value">${sunRiseFmt}</div>
+            </div>
+            <div class="sun-moon-col sun-moon-center">
+                <div class="sun-moon-daylight">${daylight}</div>
+                <div class="sun-moon-sublabel">of daylight</div>
+            </div>
+            <div class="sun-moon-col">
+                <div class="sun-moon-label">Sunset</div>
+                <div class="sun-moon-value">${sunSetFmt}</div>
+            </div>
+        </div>
+        ${dawn ? `<div class="sun-moon-twilight">Dawn ${dawn} &middot; Dusk ${dusk}</div>` : ""}
+        <div class="sun-moon-divider"></div>
+        <div class="sun-moon-row">
+            <div class="sun-moon-col">
+                <div class="sun-moon-label">Moonrise</div>
+                <div class="sun-moon-value">${moonRiseFmt}</div>
+            </div>
+            <div class="sun-moon-col sun-moon-center">
+                <div class="sun-moon-phase-icon">${phaseEmoji}</div>
+                <div class="sun-moon-phase-name">${_esc(moon.phase || "")}</div>
+                ${moon.illumination ? `<div class="sun-moon-illum">${_esc(moon.illumination)} illuminated</div>` : ""}
+            </div>
+            <div class="sun-moon-col">
+                <div class="sun-moon-label">Moonset</div>
+                <div class="sun-moon-value">${moonSetFmt}</div>
+            </div>
+        </div>
+        ${moon.next_phase ? `<div class="sun-moon-next">Next: ${_esc(moon.next_phase)} on ${_formatDay(moon.next_phase_date)}</div>` : ""}
+    </div>`;
+}
+
+function _moonPhaseEmoji(phase) {
+    if (!phase) return "";
+    const p = phase.toLowerCase();
+    if (p === "new moon") return "\u{1F311}";
+    if (p.includes("waxing crescent")) return "\u{1F312}";
+    if (p.includes("first quarter")) return "\u{1F313}";
+    if (p.includes("waxing gibbous")) return "\u{1F314}";
+    if (p === "full moon") return "\u{1F315}";
+    if (p.includes("waning gibbous")) return "\u{1F316}";
+    if (p.includes("last quarter") || p.includes("third quarter")) return "\u{1F317}";
+    if (p.includes("waning crescent")) return "\u{1F318}";
+    return "\u{1F319}";
 }
 
 function _renderDaily(w) {
@@ -350,7 +578,7 @@ function _renderDaily(w) {
     let rows = "";
     for (let i = 0; i < w.daily.length; i++) {
         const d = w.daily[i];
-        const dayName = i === 0 ? "Today" : _formatDay(d.date);
+        const dayName = i === 0 ? "Today" : i === 1 ? "Tmrw" : _formatDay(d.date);
         const lo = Math.round(d.temp_min);
         const hi = Math.round(d.temp_max);
         const precip = Math.round(d.precipitation_prob_max || 0);
@@ -378,7 +606,7 @@ function _renderDaily(w) {
     }
 
     return `
-    <div class="section-title">3-Day Forecast</div>
+    <div class="section-title">14-Day Forecast</div>
     <div class="daily-list">${rows}</div>`;
 }
 
@@ -465,12 +693,12 @@ function _renderHistory(data, container) {
 
     // Canvas chart
     const chartWidth = Math.max(data.length * 8, 300);
-    const chartHeight = 160;
-    const precipHeight = 40;
+    const chartHeight = 120;
+    const precipHeight = 30;
 
     let html = `
     <div class="history-chart">
-        <canvas id="history-canvas" width="${chartWidth}" height="${chartHeight + precipHeight + 20}"></canvas>
+        <canvas id="history-canvas" width="${chartWidth}" height="${chartHeight + precipHeight + 30}"></canvas>
     </div>
     <div class="history-stats">
         <div class="history-stat"><div class="history-stat-value">${avgHigh}°</div><div class="history-stat-label">Avg High</div></div>
@@ -482,13 +710,21 @@ function _renderHistory(data, container) {
     container.innerHTML = html;
 
     // Draw chart on next frame
-    requestAnimationFrame(() => _drawHistoryChart(data, chartWidth, chartHeight, precipHeight));
+    requestAnimationFrame(() => {
+        _drawHistoryChart(data, chartWidth, chartHeight, precipHeight);
+        const canvas = document.getElementById("history-canvas");
+        if (canvas) {
+            canvas.addEventListener("click", _handleHistoryTap);
+            canvas.addEventListener("touchend", _handleHistoryTap);
+        }
+    });
 }
 
 function _drawHistoryChart(data, chartWidth, chartHeight, precipHeight) {
     const canvas = document.getElementById("history-canvas");
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
     // Colors
@@ -564,16 +800,158 @@ function _drawHistoryChart(data, chartWidth, chartHeight, precipHeight) {
         ctx.fillRect(x, precipTop + precipHeight - barH, 4, barH);
     }
 
-    // Labels
+    // Month boundaries — vertical lines + labels
+    ctx.font = "11px sans-serif";
+    ctx.fillStyle = textColor;
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let prevMonth = -1;
+    for (let i = 0; i < data.length; i++) {
+        const d = new Date(data[i].date + "T12:00:00");
+        const mo = d.getMonth();
+        if (mo !== prevMonth) {
+            const x = pad.left + i * dx;
+            // Vertical separator at month boundary (skip first day)
+            if (prevMonth !== -1) {
+                ctx.strokeStyle = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)";
+                ctx.lineWidth = 1;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x, pad.top);
+                ctx.lineTo(x, precipTop + precipHeight);
+                ctx.stroke();
+            }
+            // Month label below precip bars
+            ctx.fillStyle = textColor;
+            ctx.textAlign = i === 0 ? "left" : "center";
+            ctx.fillText(monthNames[mo], x, precipTop + precipHeight + 12);
+            prevMonth = mo;
+        }
+    }
+
+    // Temp scale labels on right edge
     ctx.fillStyle = textColor;
     ctx.font = "10px sans-serif";
-    // First and last date
-    if (data.length) {
-        ctx.textAlign = "left";
-        ctx.fillText(data[0].date.slice(5), pad.left, precipTop + precipHeight + 12);
-        ctx.textAlign = "right";
-        ctx.fillText(data[data.length - 1].date.slice(5), chartWidth - pad.right, precipTop + precipHeight + 12);
+    ctx.textAlign = "right";
+    for (let i = 0; i <= 4; i++) {
+        const temp = Math.round(maxTemp - (tempRange / 4) * i);
+        const y = pad.top + (plotH / 4) * i;
+        ctx.fillText(temp + "°", chartWidth - pad.right - 2, y - 3);
     }
+
+    // Save geometry for tap-to-inspect
+    _historyChartMeta = { data, dx, pad, minTemp, maxTemp, tempRange, plotH, chartWidth, chartHeight, precipHeight, highColor, lowColor };
+}
+
+// ── History Tap-to-Inspect ─────────────────────────────────────
+function _handleHistoryTap(e) {
+    e.preventDefault();
+    if (!_historyChartMeta) return;
+    const canvas = document.getElementById("history-canvas");
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    let clientX, clientY;
+    if (e.changedTouches) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+    const canvasX = (clientX - rect.left) * scaleX;
+
+    const m = _historyChartMeta;
+    const idx = Math.round((canvasX - m.pad.left) / m.dx);
+    if (idx < 0 || idx >= m.data.length) return;
+
+    const record = m.data[idx];
+
+    // Redraw chart with highlight
+    _drawHistoryChart(m.data, m.chartWidth, m.chartHeight, m.precipHeight);
+    _drawHistoryHighlight(idx);
+
+    // Show tooltip
+    _showHistoryTooltip(record, clientX, clientY);
+}
+
+function _drawHistoryHighlight(idx) {
+    const canvas = document.getElementById("history-canvas");
+    if (!canvas || !_historyChartMeta) return;
+    const ctx = canvas.getContext("2d");
+    const m = _historyChartMeta;
+    const x = m.pad.left + idx * m.dx;
+
+    function tempY(v) {
+        return m.pad.top + m.plotH - ((v - m.minTemp) / m.tempRange) * m.plotH;
+    }
+    const m_pad_top = m.pad.top || 10;
+
+    // Vertical line
+    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    ctx.strokeStyle = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.2)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, m_pad_top);
+    ctx.lineTo(x, m.chartHeight + m.precipHeight + 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dots for high/low
+    const record = m.data[idx];
+    if (record.high != null) {
+        ctx.fillStyle = m.highColor;
+        ctx.beginPath();
+        ctx.arc(x, tempY(record.high), 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    if (record.low != null) {
+        ctx.fillStyle = m.lowColor;
+        ctx.beginPath();
+        ctx.arc(x, tempY(record.low), 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function _showHistoryTooltip(record, clientX, clientY) {
+    let tooltip = document.getElementById("history-tooltip");
+    if (!tooltip) {
+        tooltip = document.createElement("div");
+        tooltip.id = "history-tooltip";
+        tooltip.className = "history-tooltip";
+        document.body.appendChild(tooltip);
+    }
+
+    const dateStr = new Date(record.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const hi = record.high != null ? Math.round(record.high) + "°" : "--";
+    const lo = record.low != null ? Math.round(record.low) + "°" : "--";
+    const precip = record.precip != null ? record.precip.toFixed(2) + '"' : "--";
+
+    tooltip.innerHTML = `
+        <div style="font-weight:600;margin-bottom:4px">${dateStr}</div>
+        <div>High: <span style="color:#ff7043">${hi}</span></div>
+        <div>Low: <span style="color:#42a5f5">${lo}</span></div>
+        <div>Precip: ${precip}</div>
+    `;
+
+    // Position tooltip near tap point
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = clientX + 12;
+    let top = clientY - 60;
+    if (left + 140 > vw) left = clientX - 152;
+    if (top < 10) top = clientY + 12;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = top + "px";
+
+    tooltip.classList.add("visible");
+
+    // Auto-hide after 3 seconds
+    clearTimeout(tooltip._hideTimer);
+    tooltip._hideTimer = setTimeout(() => {
+        tooltip.classList.remove("visible");
+    }, 3000);
 }
 
 // ── Location Search ────────────────────────────────────────────
@@ -712,6 +1090,9 @@ function _bindGlobalEvents() {
     document.getElementById("settings-close").addEventListener("click", _closeSettings);
     document.getElementById("history-close").addEventListener("click", () => {
         document.getElementById("history-overlay").classList.add("hidden");
+        _historyChartMeta = null;
+        const tooltip = document.getElementById("history-tooltip");
+        if (tooltip) tooltip.classList.remove("visible");
     });
 
     // Search input debounce
@@ -729,27 +1110,48 @@ function _bindGlobalEvents() {
         });
     }
 
-    // Pull-to-refresh
-    let touchStartY = 0;
+    // Pull-to-refresh + swipe between locations
+    let touchStartX = 0, touchStartY = 0;
     let pulling = false;
+    let swiping = false;
 
     document.addEventListener("touchstart", (e) => {
-        if (window.scrollY === 0) {
-            touchStartY = e.touches[0].clientY;
-            pulling = true;
-        }
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+
+        // Pull-to-refresh
+        pulling = window.scrollY === 0;
+
+        // Swipe between locations (detail view only, not in horizontal-scroll areas)
+        swiping = _activeLocation && _locations.length > 1
+            && !e.target.closest(".hourly-scroll, .precip-strip, .history-chart")
+            && !e.target.closest(".overlay");
     }, { passive: true });
 
     document.addEventListener("touchend", (e) => {
-        if (!pulling) return;
+        const dx = e.changedTouches[0].clientX - touchStartX;
         const dy = e.changedTouches[0].clientY - touchStartY;
-        pulling = false;
-        if (dy > 80) {
+
+        // Pull-to-refresh
+        if (pulling && dy > 80) {
             _refreshCurrent();
             if (_activeLocation && _activeWeather) {
                 _fetchAndRenderDetail(_activeLocation);
             }
         }
+        pulling = false;
+
+        // Swipe between locations
+        if (swiping && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+            const idx = _locations.findIndex(l => l.lat === _activeLocation.lat && l.lon === _activeLocation.lon);
+            if (idx !== -1) {
+                const nextIdx = dx < 0
+                    ? (idx + 1) % _locations.length                   // swipe left → next
+                    : (idx - 1 + _locations.length) % _locations.length; // swipe right → prev
+                _navigateToDetail(_locations[nextIdx]);
+            }
+        }
+        swiping = false;
     }, { passive: true });
 
     // Visibility change — refresh on app resume
@@ -793,5 +1195,6 @@ function _formatTime(isoStr) {
 function _formatDay(dateStr) {
     if (!dateStr) return "";
     const d = new Date(dateStr + "T12:00:00");
-    return d.toLocaleDateString("en-US", { weekday: "short" });
+    const wday = d.toLocaleDateString("en-US", { weekday: "short" });
+    return `${wday} ${d.getDate()}`;
 }

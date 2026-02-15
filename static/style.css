@@ -132,10 +132,16 @@ header h1 {
 
 .loc-card-details {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     margin-top: 6px;
     font-size: 13px;
     color: var(--text-secondary);
+}
+
+.loc-card-precip {
+    color: var(--accent);
+    font-weight: 500;
 }
 
 .loc-card-desc {
@@ -176,9 +182,18 @@ header h1 {
     color: var(--text-secondary);
 }
 
+.current-forecast-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-top: 10px;
+    padding: 0 4px;
+    text-align: left;
+}
+
 .current-details {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-top: 16px;
     padding-top: 14px;
@@ -320,6 +335,35 @@ header h1 {
 
 .hourly-item.now .hourly-feels { color: rgba(255,255,255,0.7); }
 
+.hourly-precip-bar {
+    width: 16px;
+    height: 20px;
+    position: relative;
+    background: var(--surface-alt);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.hourly-precip-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: var(--accent);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.7;
+    transition: height 0.3s;
+}
+
+.hourly-item.now .hourly-precip-bar {
+    background: rgba(255,255,255,0.2);
+}
+
+.hourly-item.now .hourly-precip-fill {
+    background: #fff;
+    opacity: 0.8;
+}
+
 .hourly-precip {
     font-size: 11px;
     color: var(--accent);
@@ -333,6 +377,122 @@ header h1 {
 }
 
 .hourly-item.now .hourly-wind { color: rgba(255,255,255,0.7); }
+
+.hourly-cloud {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+}
+
+.hourly-item.now .hourly-cloud { color: rgba(255,255,255,0.7); }
+
+.hourly-day-sep {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 46px;
+    padding: 4px 6px;
+    flex-shrink: 0;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+}
+
+.hourly-day-sep span {
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    border-right: 2px solid var(--border);
+    padding-right: 8px;
+}
+
+/* ── Sun & Moon ──────────────────────────────────────────────── */
+.sun-moon-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+}
+
+.sun-moon-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sun-moon-col {
+    flex: 1;
+    text-align: center;
+}
+
+.sun-moon-center {
+    flex: 1.2;
+}
+
+.sun-moon-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sun-moon-value {
+    font-size: 16px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.sun-moon-daylight {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.sun-moon-sublabel {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.sun-moon-twilight {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.sun-moon-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 0;
+}
+
+.sun-moon-phase-icon {
+    font-size: 28px;
+    line-height: 1;
+}
+
+.sun-moon-phase-name {
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+.sun-moon-illum {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.sun-moon-next {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
 
 /* ── Daily Forecast ───────────────────────────────────────────── */
 .daily-list {
@@ -353,9 +513,10 @@ header h1 {
 .daily-row:last-child { border-bottom: none; }
 
 .daily-day {
-    width: 56px;
+    width: 62px;
     font-size: 14px;
     font-weight: 600;
+    flex-shrink: 0;
 }
 
 .daily-icon {
@@ -510,10 +671,12 @@ header h1 {
     width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
 }
 
 .history-chart canvas {
     display: block;
+    cursor: crosshair;
 }
 
 .history-stats {
@@ -751,6 +914,127 @@ header h1 {
 }
 
 /* ── Sunrise/Sunset Row ───────────────────────────────────────── */
+/* ── Weather Alerts ──────────────────────────────────────────── */
+.alert-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+    border-left: 4px solid #ffc107;
+}
+
+.alert-card.alert-severe {
+    border-left-color: #f44336;
+}
+
+.alert-card.alert-moderate {
+    border-left-color: #ff9800;
+}
+
+.alert-card.alert-minor {
+    border-left-color: #ffc107;
+}
+
+.alert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.alert-event {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.alert-severity {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    background: var(--surface-alt);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.alert-headline {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+.alert-times {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.alert-details {
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.alert-details summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.alert-details p {
+    margin-top: 8px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    color: var(--text-secondary);
+}
+
+/* Dashboard alert badge */
+.loc-card-alert {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    display: inline-block;
+}
+
+.loc-card-alert.alert-badge-severe {
+    background: #f44336;
+    color: #fff;
+}
+
+.loc-card-alert.alert-badge-moderate {
+    background: #ff9800;
+    color: #fff;
+}
+
+.loc-card-alert.alert-badge-minor {
+    background: #ffc107;
+    color: #333;
+}
+
+/* ── History Tooltip ──────────────────────────────────────────── */
+.history-tooltip {
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+    box-shadow: var(--shadow);
+    z-index: 300;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    min-width: 120px;
+}
+
+.history-tooltip.visible {
+    opacity: 1;
+}
+
+/* ── Sunrise/Sunset Row ───────────────────────────────────────── */
 .sun-times {
     display: flex;
     justify-content: center;
@@ -758,4 +1042,10 @@ header h1 {
     font-size: 13px;
     color: var(--text-secondary);
     margin-top: 8px;
+}
+
+.sun-daylight {
+    font-weight: 500;
+    color: var(--text);
+    opacity: 0.7;
 }

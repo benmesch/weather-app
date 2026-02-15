@@ -67,6 +67,7 @@ class HourlyForecast:
     humidity: float
     uv_index: float
     is_day: bool
+    cloud_cover: Optional[float] = None
 
     def to_dict(self):
         return asdict(self)
@@ -127,6 +128,9 @@ class WeatherData:
     daily: list = field(default_factory=list)
     minutely: list = field(default_factory=list)
     air_quality: list = field(default_factory=list)
+    alerts: list = field(default_factory=list)
+    forecast_text: list = field(default_factory=list)
+    sun_moon: dict = field(default_factory=dict)
     fetched_at: str = ""
 
     def to_dict(self):
@@ -137,5 +141,8 @@ class WeatherData:
             "daily": [d.to_dict() for d in self.daily],
             "minutely": [m.to_dict() for m in self.minutely],
             "air_quality": [a.to_dict() for a in self.air_quality],
+            "alerts": self.alerts,
+            "forecast_text": self.forecast_text,
+            "sun_moon": self.sun_moon,
             "fetched_at": self.fetched_at,
         }

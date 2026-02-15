@@ -18,6 +18,8 @@ from data_sources.open_meteo import (
     search_locations, parse_weather, parse_current_with_daily,
     fetch_historical,
 )
+from data_sources.nws_alerts import fetch_alerts, fetch_forecast_text
+from data_sources.usno import fetch_sun_moon
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,6 +107,9 @@ def _refresh_all_forecasts():
             raw = fetch_weather(loc)
             aqi_raw = fetch_air_quality(loc)
             data = parse_weather(raw, aqi_raw, loc)
+            data.alerts = fetch_alerts(loc.lat, loc.lon)
+            data.forecast_text = fetch_forecast_text(loc.lat, loc.lon)
+            data.sun_moon = fetch_sun_moon(loc.lat, loc.lon, loc.timezone)
             cache.set_forecast(loc.key, data)
             log.info("Forecast updated for %s", loc.name)
         except Exception:
@@ -264,6 +269,17 @@ def api_history():
     key = f"{lat},{lon}"
     history = _load_history()
     return jsonify(history.get(key, []))
+
+
+@app.route("/api/alerts")
+def api_alerts():
+    """Fetch active NWS weather alerts for a location."""
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+    if lat is None or lon is None:
+        return jsonify({"error": "lat and lon required"}), 400
+    alerts = fetch_alerts(lat, lon)
+    return jsonify(alerts)
 
 
 # ── Startup ───────────────────────────────────────────────────────────
