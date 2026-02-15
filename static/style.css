@@ -1,0 +1,743 @@
+/* ── CSS Variables ─────────────────────────────────────────────── */
+:root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface-alt: #e8edf2;
+    --text: #1a1a2e;
+    --text-secondary: #5a6577;
+    --accent: #2196F3;
+    --accent-light: #64b5f6;
+    --border: #dde3ea;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --radius: 12px;
+    --radius-sm: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #121212;
+        --surface: #1e1e1e;
+        --surface-alt: #2a2a2a;
+        --text: #e0e0e0;
+        --text-secondary: #999;
+        --accent: #64b5f6;
+        --accent-light: #90caf9;
+        --border: #333;
+        --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+}
+
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior-y: contain;
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+header h1 {
+    flex: 1;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.header-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 22px;
+    padding: 6px 10px;
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-right {
+    display: flex;
+    gap: 2px;
+}
+
+.hidden { display: none !important; }
+
+/* ── Main container ───────────────────────────────────────────── */
+#weather-container {
+    padding: 12px;
+    padding-bottom: 40px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* ── Dashboard: Location Cards ────────────────────────────────── */
+.location-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.location-card:active {
+    transform: scale(0.98);
+}
+
+.loc-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.loc-card-name {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.loc-card-region {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.loc-card-temp {
+    font-size: 42px;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.loc-card-icon {
+    font-size: 36px;
+    line-height: 1;
+}
+
+.loc-card-details {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.loc-card-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* ── Detail View: Current ─────────────────────────────────────── */
+.current-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+.current-icon {
+    font-size: 64px;
+    line-height: 1;
+}
+
+.current-temp {
+    font-size: 56px;
+    font-weight: 200;
+    line-height: 1.1;
+}
+
+.current-desc {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin: 4px 0;
+}
+
+.current-feels {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.current-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.current-detail-item {
+    text-align: center;
+}
+
+.current-detail-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.current-detail-value {
+    font-size: 15px;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+/* ── Section Titles ───────────────────────────────────────────── */
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 16px 0 8px 4px;
+}
+
+/* ── Precipitation Strip ──────────────────────────────────────── */
+.precip-strip-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+}
+
+.precip-strip {
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 60px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.precip-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 32px;
+    flex-shrink: 0;
+}
+
+.precip-bar {
+    width: 22px;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+    min-height: 2px;
+}
+
+.precip-bar-time {
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    white-space: nowrap;
+}
+
+.precip-none {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    padding: 16px 0;
+}
+
+/* ── Hourly Scroll ────────────────────────────────────────────── */
+.hourly-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+}
+
+.hourly-scroll {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 4px;
+}
+
+.hourly-scroll::-webkit-scrollbar { display: none; }
+
+.hourly-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 58px;
+    padding: 8px 4px;
+    scroll-snap-align: start;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+
+.hourly-item.now {
+    background: var(--accent);
+    color: #fff;
+}
+
+.hourly-item.now .hourly-precip { color: rgba(255,255,255,0.8); }
+
+.hourly-time {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.hourly-icon {
+    font-size: 22px;
+    margin: 4px 0;
+}
+
+.hourly-temp {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.hourly-feels {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+}
+
+.hourly-item.now .hourly-feels { color: rgba(255,255,255,0.7); }
+
+.hourly-precip {
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 2px;
+}
+
+.hourly-wind {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+}
+
+.hourly-item.now .hourly-wind { color: rgba(255,255,255,0.7); }
+
+/* ── Daily Forecast ───────────────────────────────────────────── */
+.daily-list {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+.daily-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.daily-row:last-child { border-bottom: none; }
+
+.daily-day {
+    width: 56px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.daily-icon {
+    font-size: 22px;
+    width: 36px;
+    text-align: center;
+}
+
+.daily-temps {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+}
+
+.daily-low {
+    font-size: 14px;
+    color: var(--text-secondary);
+    width: 34px;
+    text-align: right;
+}
+
+.daily-bar-track {
+    flex: 1;
+    height: 6px;
+    background: var(--surface-alt);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.daily-bar-fill {
+    position: absolute;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #ff9800);
+}
+
+.daily-high {
+    font-size: 14px;
+    font-weight: 600;
+    width: 34px;
+}
+
+.daily-extra {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-left: 10px;
+    min-width: 44px;
+}
+
+.daily-precip {
+    font-size: 12px;
+    color: var(--accent);
+}
+
+.daily-wind {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* ── Air Quality ──────────────────────────────────────────────── */
+.aqi-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+}
+
+.aqi-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.aqi-ring {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.aqi-ring-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.aqi-label {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.aqi-sublabel {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.aqi-pollutants {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.aqi-pollutant {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 4px 0;
+}
+
+.aqi-pollutant-name {
+    color: var(--text-secondary);
+}
+
+.aqi-pollutant-value {
+    font-weight: 500;
+}
+
+/* ── History Card ─────────────────────────────────────────────── */
+.history-btn {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    width: 100%;
+    border: none;
+    color: var(--text);
+    text-align: left;
+    font-size: 15px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.history-btn:active { transform: scale(0.98); }
+.history-btn-arrow { color: var(--text-secondary); font-size: 18px; }
+
+/* ── History Chart ────────────────────────────────────────────── */
+.history-chart {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.history-chart canvas {
+    display: block;
+}
+
+.history-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.history-stat {
+    background: var(--surface-alt);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    text-align: center;
+}
+
+.history-stat-value {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.history-stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 2px;
+}
+
+/* ── Overlays ─────────────────────────────────────────────────── */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.overlay-content {
+    background: var(--surface);
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-width: 600px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 20px;
+    animation: slideUp 0.2s ease-out;
+}
+
+.overlay-content-wide {
+    max-height: 90vh;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+.overlay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.overlay-header h2 {
+    font-size: 18px;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Search Input ─────────────────────────────────────────────── */
+#location-search-input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 16px;
+    outline: none;
+}
+
+#location-search-input:focus {
+    border-color: var(--accent);
+}
+
+#search-results {
+    margin-top: 8px;
+}
+
+.search-result-item {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.search-result-item:active {
+    background: var(--surface-alt);
+}
+
+.search-result-name {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.search-result-region {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* ── Settings ─────────────────────────────────────────────────── */
+.settings-section h3 {
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.settings-location-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+}
+
+.settings-loc-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-loc-name {
+    font-size: 15px;
+}
+
+.settings-loc-region {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.settings-reorder-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-move-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 8px;
+    min-width: 32px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.settings-move-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.settings-delete-btn {
+    background: none;
+    border: none;
+    color: #f44336;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Loading / Empty States ───────────────────────────────────── */
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Sunrise/Sunset Row ───────────────────────────────────────── */
+.sun-times {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}

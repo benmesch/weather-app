@@ -1,0 +1,13 @@
+[Unit]
+Description=Weather PWA
+After=network.target
+
+[Service]
+Type=simple
+User=benmesch
+WorkingDirectory=/home/benmesch/claude_apps/weather-app
+ExecStart=/usr/bin/python3 app.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#121212">
+    <title>BenWeather</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header id="app-header">
+        <button id="back-btn" class="header-btn hidden" aria-label="Back">&larr;</button>
+        <h1 id="header-title">BenWeather</h1>
+        <div class="header-right">
+            <button id="add-btn" class="header-btn" aria-label="Add location">+</button>
+            <button id="settings-btn" class="header-btn" aria-label="Settings">&#9881;</button>
+        </div>
+    </header>
+
+    <main id="weather-container"></main>
+
+    <!-- Location search overlay -->
+    <div id="location-search-overlay" class="overlay hidden">
+        <div class="overlay-content">
+            <div class="overlay-header">
+                <h2>Add Location</h2>
+                <button class="close-btn" id="search-close">&times;</button>
+            </div>
+            <input type="text" id="location-search-input" placeholder="Search city..." autocomplete="off">
+            <div id="search-results"></div>
+        </div>
+    </div>
+
+    <!-- Settings overlay -->
+    <div id="settings-overlay" class="overlay hidden">
+        <div class="overlay-content">
+            <div class="overlay-header">
+                <h2>Settings</h2>
+                <button class="close-btn" id="settings-close">&times;</button>
+            </div>
+            <div class="settings-section">
+                <h3>Locations</h3>
+                <div id="settings-locations"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History overlay -->
+    <div id="history-overlay" class="overlay hidden">
+        <div class="overlay-content overlay-content-wide">
+            <div class="overlay-header">
+                <h2 id="history-title">60-Day History</h2>
+                <button class="close-btn" id="history-close">&times;</button>
+            </div>
+            <div id="history-content"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
