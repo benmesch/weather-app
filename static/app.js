@@ -8,6 +8,8 @@ let _activeWeather = null;   // full WeatherData for active location
 let _searchTimeout = null;
 let _historyChartMeta = null;  // stored chart geometry for tap-to-inspect
 let _allAlerts = {};           // key -> alert array
+let _radarMap = null;          // Leaflet map instance (cleanup on view change)
+let _radarInterval = null;     // animation timer
 
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -95,6 +97,7 @@ function _navigateToDetail(loc) {
 }
 
 function _navigateToDashboard() {
+    _cleanupRadar();
     _activeLocation = null;
     _activeWeather = null;
     document.getElementById("header-title").textContent = "BenWeather";
@@ -224,6 +227,9 @@ function _renderDetail() {
     // Sun & Moon
     html += _renderSunMoon(w);
 
+    // Weather Radar
+    html += _renderRadar();
+
     // Daily
     html += _renderDaily(w);
 
@@ -236,11 +242,17 @@ function _renderDetail() {
         <span class="history-btn-arrow">&rsaquo;</span>
     </button>`;
 
+    _cleanupRadar();
     container.innerHTML = html;
+    _initRadar(loc);
 
-    // Scroll hourly to "now"
+    // Scroll page to top, then scroll hourly strip to "now" horizontally
+    window.scrollTo(0, 0);
     const nowEl = container.querySelector(".hourly-item.now");
-    if (nowEl) nowEl.scrollIntoView({ inline: "start", block: "nearest" });
+    if (nowEl) {
+        const scroll = nowEl.closest(".hourly-scroll");
+        if (scroll) scroll.scrollLeft = nowEl.offsetLeft - scroll.offsetLeft;
+    }
 
     // History button
     document.getElementById("history-btn")?.addEventListener("click", () => _openHistory(loc));
@@ -320,8 +332,11 @@ function _renderCurrent(w) {
         }
     }
 
+    const fetchedTime = _formatTime(c.fetched_at || w.fetched_at || "");
+
     return `
     <div class="current-card">
+        ${fetchedTime ? `<div class="current-fetched-at">${fetchedTime}</div>` : ""}
         <div class="current-icon">${icon}</div>
         <div class="current-temp">${temp}°</div>
         <div class="current-desc">${_esc(desc)}</div>
@@ -357,10 +372,41 @@ function _renderCurrent(w) {
     </div>`;
 }
 
+function _precipSummary(slots) {
+    const hasPrecip = slots.some(s => (s.precipitation || 0) > 0);
+    if (!hasPrecip) return "No precipitation expected in the next 6 hours";
+
+    // Determine type from totals
+    const totalRain = slots.reduce((a, s) => a + (s.rain || 0), 0);
+    const totalSnow = slots.reduce((a, s) => a + (s.snowfall || 0), 0);
+    const type = totalSnow > totalRain ? "snow" : "rain";
+
+    // Peak rate for intensity
+    const peak = Math.max(...slots.map(s => s.precipitation || 0));
+    const intensity = peak > 0.12 ? "Heavy" : peak > 0.04 ? "Moderate" : "Light";
+
+    const firstPrecipIdx = slots.findIndex(s => (s.precipitation || 0) > 0);
+    const lastPrecipIdx = slots.length - 1 - [...slots].reverse().findIndex(s => (s.precipitation || 0) > 0);
+    const currentlyPrecip = firstPrecipIdx === 0;
+
+    if (currentlyPrecip) {
+        // Check if it stops within the window
+        const firstDryAfterStart = slots.findIndex((s, i) => i > 0 && (s.precipitation || 0) === 0);
+        if (firstDryAfterStart === -1 || lastPrecipIdx >= slots.length - 1) {
+            return `${intensity} ${type} continuing for 6+ hours`;
+        }
+        const endMin = firstDryAfterStart * 15;
+        return `${intensity} ${type}, ending in ~${endMin} min`;
+    } else {
+        const startMin = firstPrecipIdx * 15;
+        return `${intensity} ${type} expected in ~${startMin} min`;
+    }
+}
+
 function _renderPrecipStrip(w) {
     if (!w.minutely || !w.minutely.length) return "";
 
-    // Find current 15-min slot and show next 2 hours (8 slots)
+    // Find current 15-min slot and show next 6 hours (24 slots)
     const now = new Date();
     let startIdx = 0;
     for (let i = 0; i < w.minutely.length; i++) {
@@ -370,29 +416,59 @@ function _renderPrecipStrip(w) {
         }
     }
 
-    const slots = w.minutely.slice(startIdx, startIdx + 8);
+    const slots = w.minutely.slice(startIdx, startIdx + 24);
     const maxPrecip = Math.max(...slots.map(s => s.precipitation || 0), 0.01);
     const hasPrecip = slots.some(s => (s.precipitation || 0) > 0);
 
-    let inner;
+    // Accumulation total (convert inches → mm)
+    const totalIn = slots.reduce((a, s) => a + (s.precipitation || 0), 0);
+    const totalRain = slots.reduce((a, s) => a + (s.rain || 0), 0);
+    const totalSnow = slots.reduce((a, s) => a + (s.snowfall || 0), 0);
+    const totalMm = totalIn * 25.4;
+    const precipEmoji = totalSnow > totalRain ? "\u2744\uFE0F" : "\uD83C\uDF27\uFE0F";
+    const totalStr = totalMm > 0
+        ? precipEmoji + " " + (totalMm >= 10 ? (totalMm / 10).toFixed(1) + " cm" : totalMm.toFixed(1) + " mm")
+        : "0 mm";
+
+    // Summary text
+    const summary = _precipSummary(slots);
+
+    let inner = `<div class="precip-header"><span>Next 6 Hours</span><span class="precip-total">${totalStr} total</span></div>`;
+    inner += `<div class="precip-summary">${summary}</div>`;
+
     if (!hasPrecip) {
-        inner = `<div class="precip-none">No precipitation expected</div>`;
+        // No bars needed — summary already says no precip
     } else {
-        inner = `<div class="precip-strip">`;
+        inner += `<div class="precip-strip">`;
         for (const s of slots) {
-            const pct = Math.max(4, ((s.precipitation || 0) / maxPrecip) * 50);
+            const amt = s.precipitation || 0;
+            const pct = Math.max(4, (amt / maxPrecip) * 50);
             const t = _formatTime(s.time);
+
+            // Determine bar type: snow, mixed, or rain
+            const rain = s.rain || 0;
+            const snow = s.snowfall || 0;
+            let barClass = "precip-bar";
+            if (snow > 0 && rain > 0) barClass += " mixed";
+            else if (snow > rain) barClass += " snow";
+
+            // Amount label (convert inches → mm)
+            let amtLabel = "";
+            if (amt > 0) {
+                const mm = amt * 25.4;
+                amtLabel = mm < 0.1 ? "Tr" : mm.toFixed(1);
+            }
+
             inner += `<div class="precip-bar-wrap">
-                <div class="precip-bar" style="height:${pct}px"></div>
+                ${amtLabel ? `<div class="precip-bar-amount">${amtLabel}</div>` : ""}
+                <div class="${barClass}" style="height:${pct}px"></div>
                 <div class="precip-bar-time">${t}</div>
             </div>`;
         }
         inner += `</div>`;
     }
 
-    return `
-    <div class="section-title">Next 2 Hours</div>
-    <div class="precip-strip-card">${inner}</div>`;
+    return `<div class="precip-strip-card">${inner}</div>`;
 }
 
 function _renderHourly(w) {
@@ -562,6 +638,100 @@ function _moonPhaseEmoji(phase) {
     if (p.includes("last quarter") || p.includes("third quarter")) return "\u{1F317}";
     if (p.includes("waning crescent")) return "\u{1F318}";
     return "\u{1F319}";
+}
+
+function _renderRadar() {
+    return `
+    <div class="section-title">Weather Radar</div>
+    <div class="radar-card">
+        <div id="radar-map"></div>
+        <div class="radar-controls">
+            <button class="radar-play-btn" id="radar-play">&#9654;</button>
+            <span class="radar-time" id="radar-time">--</span>
+            <input type="range" class="radar-slider" id="radar-slider" min="0" max="0" value="0">
+        </div>
+        <div class="radar-attr"><a href="https://www.rainviewer.com" target="_blank" rel="noopener">RainViewer</a></div>
+    </div>`;
+}
+
+function _initRadar(loc) {
+    const mapEl = document.getElementById("radar-map");
+    if (!mapEl) return;
+
+    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const map = L.map("radar-map", { zoomControl: false }).setView([loc.lat, loc.lon], 7);
+
+    if (isDark) {
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+        }).addTo(map);
+    } else {
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+        }).addTo(map);
+    }
+
+    _radarMap = map;
+
+    fetch("https://api.rainviewer.com/public/weather-maps.json")
+        .then(r => r.json())
+        .then(data => {
+            const host = data.host;
+            const frames = (data.radar && data.radar.past) || [];
+            if (!frames.length) return;
+
+            const slider = document.getElementById("radar-slider");
+            const timeLabel = document.getElementById("radar-time");
+            const playBtn = document.getElementById("radar-play");
+            if (!slider || !timeLabel || !playBtn) return;
+
+            slider.max = frames.length - 1;
+            slider.value = frames.length - 1;
+            let currentIdx = frames.length - 1;
+            let radarLayer = null;
+
+            function showFrame(idx) {
+                currentIdx = idx;
+                const path = frames[idx].path;
+                const url = `${host}${path}/256/{z}/{x}/{y}/2/1_1.png`;
+                if (radarLayer) map.removeLayer(radarLayer);
+                radarLayer = L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 7, maxZoom: 19 }).addTo(map);
+                slider.value = idx;
+                const ts = new Date(frames[idx].time * 1000);
+                timeLabel.textContent = ts.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            }
+
+            showFrame(currentIdx);
+
+            let playing = false;
+            playBtn.addEventListener("click", () => {
+                if (playing) {
+                    clearInterval(_radarInterval);
+                    _radarInterval = null;
+                    playing = false;
+                    playBtn.innerHTML = "&#9654;";
+                } else {
+                    playing = true;
+                    playBtn.innerHTML = "&#9646;&#9646;";
+                    _radarInterval = setInterval(() => {
+                        currentIdx = (currentIdx + 1) % frames.length;
+                        showFrame(currentIdx);
+                    }, 500);
+                }
+            });
+
+            slider.addEventListener("input", () => {
+                showFrame(parseInt(slider.value));
+            });
+        })
+        .catch(err => console.error("Radar fetch failed", err));
+}
+
+function _cleanupRadar() {
+    if (_radarInterval) { clearInterval(_radarInterval); _radarInterval = null; }
+    if (_radarMap) { _radarMap.remove(); _radarMap = null; }
 }
 
 function _renderDaily(w) {
@@ -1122,9 +1292,9 @@ function _bindGlobalEvents() {
         // Pull-to-refresh
         pulling = window.scrollY === 0;
 
-        // Swipe between locations (detail view only, not in horizontal-scroll areas)
-        swiping = _activeLocation && _locations.length > 1
-            && !e.target.closest(".hourly-scroll, .precip-strip, .history-chart")
+        // Swipe between locations (dashboard or detail view, not in horizontal-scroll areas)
+        swiping = _locations.length > 1
+            && !e.target.closest(".hourly-scroll, .precip-strip, .history-chart, #radar-map")
             && !e.target.closest(".overlay");
     }, { passive: true });
 
@@ -1143,12 +1313,18 @@ function _bindGlobalEvents() {
 
         // Swipe between locations
         if (swiping && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-            const idx = _locations.findIndex(l => l.lat === _activeLocation.lat && l.lon === _activeLocation.lon);
-            if (idx !== -1) {
-                const nextIdx = dx < 0
-                    ? (idx + 1) % _locations.length                   // swipe left → next
-                    : (idx - 1 + _locations.length) % _locations.length; // swipe right → prev
-                _navigateToDetail(_locations[nextIdx]);
+            if (!_activeLocation) {
+                // Dashboard: swipe left → first location, swipe right → last location
+                const target = dx < 0 ? _locations[0] : _locations[_locations.length - 1];
+                _navigateToDetail(target);
+            } else {
+                const idx = _locations.findIndex(l => l.lat === _activeLocation.lat && l.lon === _activeLocation.lon);
+                if (idx !== -1) {
+                    const nextIdx = dx < 0
+                        ? (idx + 1) % _locations.length                   // swipe left → next
+                        : (idx - 1 + _locations.length) % _locations.length; // swipe right → prev
+                    _navigateToDetail(_locations[nextIdx]);
+                }
             }
         }
         swiping = false;

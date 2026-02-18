@@ -2,6 +2,7 @@
 
 # Cache TTLs (seconds)
 CURRENT_TTL = 600       # 10 min for on-demand current weather
+FORECAST_TEXT_TTL = 3600  # 1 hr for NWS forecast text periods
 GEOCODE_TTL = 86400     # 24 hr for geocoding results
 
 # Default location

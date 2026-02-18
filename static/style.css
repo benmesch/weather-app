@@ -11,6 +11,7 @@
     --shadow: 0 2px 8px rgba(0,0,0,0.08);
     --radius: 12px;
     --radius-sm: 8px;
+    --snow: #90caf9;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +25,7 @@
         --accent-light: #90caf9;
         --border: #333;
         --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        --snow: #b3e5fc;
     }
 }
 
@@ -152,12 +154,22 @@ header h1 {
 
 /* ── Detail View: Current ─────────────────────────────────────── */
 .current-card {
+    position: relative;
     background: var(--surface);
     border-radius: var(--radius);
     padding: 20px;
     margin-bottom: 12px;
     box-shadow: var(--shadow);
     text-align: center;
+}
+
+.current-fetched-at {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 .current-icon {
@@ -236,11 +248,32 @@ header h1 {
     box-shadow: var(--shadow);
 }
 
+.precip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.precip-total {
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.precip-summary {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
 .precip-strip {
     display: flex;
     gap: 3px;
     align-items: flex-end;
-    height: 60px;
+    height: 85px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -258,6 +291,21 @@ header h1 {
     background: var(--accent);
     border-radius: 3px 3px 0 0;
     min-height: 2px;
+}
+
+.precip-bar.snow {
+    background: var(--snow);
+}
+
+.precip-bar.mixed {
+    background: linear-gradient(180deg, var(--snow) 0%, var(--accent) 100%);
+}
+
+.precip-bar-amount {
+    font-size: 9px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    margin-bottom: 2px;
 }
 
 .precip-bar-time {
@@ -492,6 +540,67 @@ header h1 {
     font-size: 12px;
     color: var(--text-secondary);
     margin-top: 8px;
+}
+
+/* ── Weather Radar ───────────────────────────────────────────── */
+.radar-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+#radar-map {
+    height: 300px;
+    z-index: 1;
+}
+
+.radar-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+}
+
+.radar-play-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    min-width: 36px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.radar-time {
+    font-size: 13px;
+    color: var(--text-secondary);
+    min-width: 64px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.radar-slider {
+    flex: 1;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.radar-attr {
+    text-align: right;
+    padding: 0 14px 8px;
+    font-size: 10px;
+}
+
+.radar-attr a {
+    color: var(--text-secondary);
+    text-decoration: none;
 }
 
 /* ── Daily Forecast ───────────────────────────────────────────── */

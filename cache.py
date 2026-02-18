@@ -3,7 +3,7 @@
 import threading
 from datetime import datetime
 
-from config import CURRENT_TTL, GEOCODE_TTL
+from config import CURRENT_TTL, FORECAST_TEXT_TTL, GEOCODE_TTL
 
 
 class WeatherCache:
@@ -15,6 +15,8 @@ class WeatherCache:
         # Current conditions (on-demand, 10-min TTL)
         self._current = {}        # location_key -> dict
         self._current_ts = {}     # location_key -> datetime
+        # NWS forecast text (refreshed with its own TTL)
+        self._forecast_text_ts = {}  # location_key -> datetime
         # Geocoding results
         self._geocode = {}        # query -> list[dict]
         self._geocode_ts = {}     # query -> datetime
@@ -27,6 +29,8 @@ class WeatherCache:
         with self._lock:
             self._forecast[location_key] = data
             self._forecast_ts[location_key] = datetime.now()
+            if data.forecast_text:
+                self._forecast_text_ts[location_key] = datetime.now()
 
     def get_current(self, location_key):
         with self._lock:
@@ -47,6 +51,21 @@ class WeatherCache:
             if ts:
                 return (datetime.now() - ts).total_seconds()
             return None
+
+    def forecast_text_age(self, location_key):
+        """Return seconds since last forecast text fetch, or None."""
+        with self._lock:
+            ts = self._forecast_text_ts.get(location_key)
+            if ts:
+                return (datetime.now() - ts).total_seconds()
+            return None
+
+    def update_forecast_text(self, location_key, forecast_text):
+        """Update just the forecast_text on a cached WeatherData."""
+        with self._lock:
+            if location_key in self._forecast:
+                self._forecast[location_key].forecast_text = forecast_text
+                self._forecast_text_ts[location_key] = datetime.now()
 
     def get_geocode(self, query):
         with self._lock:

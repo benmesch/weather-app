@@ -11,7 +11,7 @@ from flask import Flask, jsonify, render_template, request
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from cache import WeatherCache
-from config import DEFAULT_LOCATION, CURRENT_TTL
+from config import DEFAULT_LOCATION, CURRENT_TTL, FORECAST_TEXT_TTL
 from models import Location, WeatherData
 from data_sources.open_meteo import (
     fetch_weather, fetch_current_only, fetch_air_quality,
@@ -19,6 +19,11 @@ from data_sources.open_meteo import (
     fetch_historical,
 )
 from data_sources.nws_alerts import fetch_alerts, fetch_forecast_text
+from data_sources.nws_forecast import (
+    fetch_nws_observation, fetch_nws_hourly, fetch_nws_daily,
+    overlay_nws_current, overlay_nws_hourly, overlay_nws_daily,
+    overlay_nws_current_dict,
+)
 from data_sources.usno import fetch_sun_moon
 
 logging.basicConfig(
@@ -96,6 +101,29 @@ def _backfill_history(location):
         log.exception("Failed to backfill history for %s", location.name)
 
 
+# ── NWS Overlay ───────────────────────────────────────────────────────
+
+def _apply_nws_overlay(data, lat, lon, name):
+    """Apply NWS data overlay to WeatherData. Each piece fails independently."""
+    try:
+        nws_obs = fetch_nws_observation(lat, lon)
+        overlay_nws_current(data, nws_obs)
+    except Exception:
+        log.warning("NWS observation overlay failed for %s", name)
+
+    try:
+        nws_hourly = fetch_nws_hourly(lat, lon)
+        overlay_nws_hourly(data, nws_hourly)
+    except Exception:
+        log.warning("NWS hourly overlay failed for %s", name)
+
+    try:
+        nws_daily = fetch_nws_daily(lat, lon)
+        overlay_nws_daily(data, nws_daily)
+    except Exception:
+        log.warning("NWS daily overlay failed for %s", name)
+
+
 # ── Scheduled Jobs ────────────────────────────────────────────────────
 
 def _refresh_all_forecasts():
@@ -107,6 +135,7 @@ def _refresh_all_forecasts():
             raw = fetch_weather(loc)
             aqi_raw = fetch_air_quality(loc)
             data = parse_weather(raw, aqi_raw, loc)
+            _apply_nws_overlay(data, loc.lat, loc.lon, loc.name)
             data.alerts = fetch_alerts(loc.lat, loc.lon)
             data.forecast_text = fetch_forecast_text(loc.lat, loc.lon)
             data.sun_moon = fetch_sun_moon(loc.lat, loc.lon, loc.timezone)
@@ -184,6 +213,12 @@ def api_refresh_current():
         try:
             raw = fetch_current_only(loc)
             parsed = parse_current_with_daily(raw)
+            try:
+                nws_obs = fetch_nws_observation(loc.lat, loc.lon)
+                overlay_nws_current_dict(parsed, nws_obs)
+            except Exception:
+                log.warning("NWS observation overlay failed for %s", loc.name)
+            parsed["fetched_at"] = datetime.now().isoformat()
             cache.set_current(loc.key, parsed)
             results[loc.key] = parsed
             log.info("Current conditions refreshed for %s", loc.name)
@@ -192,6 +227,18 @@ def api_refresh_current():
             existing = cache.get_current(loc.key)
             if existing:
                 results[loc.key] = existing
+    # Also refresh NWS forecast text if stale (separate 1-hr TTL)
+    for loc in locations:
+        ft_age = cache.forecast_text_age(loc.key)
+        if ft_age is None or ft_age >= FORECAST_TEXT_TTL:
+            try:
+                forecast_text = fetch_forecast_text(loc.lat, loc.lon)
+                if forecast_text:
+                    cache.update_forecast_text(loc.key, forecast_text)
+                    log.info("Forecast text refreshed for %s", loc.name)
+            except Exception:
+                log.exception("Failed to refresh forecast text for %s", loc.name)
+
     return jsonify(results)
 
 
@@ -241,6 +288,7 @@ def api_save_locations():
                 raw = fetch_weather(loc)
                 aqi_raw = fetch_air_quality(loc)
                 weather_data = parse_weather(raw, aqi_raw, loc)
+                _apply_nws_overlay(weather_data, loc.lat, loc.lon, loc.name)
                 cache.set_forecast(loc.key, weather_data)
             except Exception:
                 log.exception("Failed to fetch forecast for new location %s", loc.name)
