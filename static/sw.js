@@ -1,4 +1,4 @@
-const CACHE_NAME = "weather-v9";
+const CACHE_NAME = "weather-v43";
 const SHELL_ASSETS = [
     "/",
     "/static/style.css",
@@ -39,18 +39,14 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    // Shell assets: cache-first, then network
+    // Shell assets: network-first, fall back to cache
     event.respondWith(
-        caches.match(event.request).then((cached) => {
-            if (cached) return cached;
-            return fetch(event.request).then((response) => {
-                // Cache successful responses
-                if (response.ok && url.origin === location.origin) {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-                }
-                return response;
-            });
-        })
+        fetch(event.request).then((response) => {
+            if (response.ok && url.origin === location.origin) {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+        }).catch(() => caches.match(event.request))
     );
 });

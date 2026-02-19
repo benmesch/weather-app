@@ -111,6 +111,54 @@ def search_locations(query):
     return results
 
 
+def fetch_comparison_historical(location, start_date, end_date):
+    """Fetch expanded historical daily data for weather comparison."""
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": location.lat,
+        "longitude": location.lon,
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": ",".join([
+            "temperature_2m_max", "temperature_2m_min", "precipitation_sum",
+            "sunshine_duration", "snowfall_sum", "weather_code", "sunrise", "sunset",
+            "apparent_temperature_max",
+        ]),
+        "temperature_unit": "fahrenheit",
+        "precipitation_unit": "inch",
+        "timezone": location.timezone,
+    }
+    resp = requests.get(url, params=params, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    daily = data.get("daily", {})
+    dates = daily.get("time", [])
+    highs = daily.get("temperature_2m_max", [])
+    lows = daily.get("temperature_2m_min", [])
+    precips = daily.get("precipitation_sum", [])
+    sunshine = daily.get("sunshine_duration", [])
+    snowfall = daily.get("snowfall_sum", [])
+    codes = daily.get("weather_code", [])
+    sunrises = daily.get("sunrise", [])
+    sunsets = daily.get("sunset", [])
+    apparent_highs = daily.get("apparent_temperature_max", [])
+    results = []
+    for i, d in enumerate(dates):
+        results.append({
+            "date": d,
+            "high": highs[i] if i < len(highs) else None,
+            "low": lows[i] if i < len(lows) else None,
+            "precip": precips[i] if i < len(precips) else None,
+            "sunshine_sec": sunshine[i] if i < len(sunshine) else None,
+            "snowfall": snowfall[i] if i < len(snowfall) else None,
+            "weather_code": codes[i] if i < len(codes) else None,
+            "sunrise": sunrises[i] if i < len(sunrises) else None,
+            "sunset": sunsets[i] if i < len(sunsets) else None,
+            "apparent_high": apparent_highs[i] if i < len(apparent_highs) else None,
+        })
+    return results
+
+
 def fetch_historical(location, start_date, end_date):
     """Fetch historical daily data from Open-Meteo archive API."""
     url = "https://archive-api.open-meteo.com/v1/archive"

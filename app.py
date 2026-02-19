@@ -16,7 +16,7 @@ from models import Location, WeatherData
 from data_sources.open_meteo import (
     fetch_weather, fetch_current_only, fetch_air_quality,
     search_locations, parse_weather, parse_current_with_daily,
-    fetch_historical,
+    fetch_historical, fetch_comparison_historical,
 )
 from data_sources.nws_alerts import fetch_alerts, fetch_forecast_text
 from data_sources.nws_forecast import (
@@ -39,6 +39,7 @@ _BASE_DIR = Path(__file__).parent
 _SETTINGS_FILE = _BASE_DIR / "settings.json"
 _HISTORY_FILE = _BASE_DIR / "history.json"
 _HISTORY_DAYS = 60
+_COMPARISON_FILE = _BASE_DIR / "comparison_cache.json"
 
 
 # ── Settings ──────────────────────────────────────────────────────────
@@ -99,6 +100,312 @@ def _backfill_history(location):
         log.info("Backfilled %d days of history for %s", len(records), location.name)
     except Exception:
         log.exception("Failed to backfill history for %s", location.name)
+
+
+# ── Comparison ────────────────────────────────────────────────────────
+
+def _load_comparison():
+    if _COMPARISON_FILE.exists():
+        with open(_COMPARISON_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+def _save_comparison(data):
+    with open(_COMPARISON_FILE, "w") as f:
+        json.dump(data, f)
+
+
+def _comparison_loc_key(lat, lon):
+    return f"{lat},{lon}"
+
+
+def _comparison_cache_key(lat1, lon1, lat2, lon2):
+    k1 = _comparison_loc_key(lat1, lon1)
+    k2 = _comparison_loc_key(lat2, lon2)
+    return "|".join(sorted([k1, k2]))
+
+
+def _aggregate_monthly(daily_records):
+    """Group daily records by YYYY-MM and compute per-month metrics."""
+    months = {}
+    for rec in daily_records:
+        ym = rec["date"][:7]  # YYYY-MM
+        months.setdefault(ym, []).append(rec)
+
+    result = []
+    for ym in sorted(months):
+        days = months[ym]
+        n = len(days)
+        sunshine_sec = sum((d.get("sunshine_sec") or 0) for d in days)
+        rainy = sum(1 for d in days if (d.get("precip") or 0) > 0.01)
+        snowy = sum(1 for d in days if (d.get("snowfall") or 0) > 0)
+        # Overcast: weather_code 3 AND not rainy/snowy
+        overcast = sum(
+            1 for d in days
+            if d.get("weather_code") == 3
+            and (d.get("precip") or 0) <= 0.01
+            and (d.get("snowfall") or 0) <= 0
+        )
+        highs = [d["high"] for d in days if d.get("high") is not None]
+        lows = [d["low"] for d in days if d.get("low") is not None]
+        avg_high = round(sum(highs) / len(highs), 1) if highs else None
+        avg_low = round(sum(lows) / len(lows), 1) if lows else None
+        freezing = sum(1 for d in days if d.get("low") is not None and d["low"] <= 32)
+        hot = sum(1 for d in days if d.get("high") is not None and d["high"] >= 90)
+        sticky = sum(1 for d in days if d.get("apparent_high") is not None and d["apparent_high"] >= 100)
+
+        # Average sunset time and daylight hours
+        sunset_mins = []
+        daylight_mins = []
+        for d in days:
+            sr = d.get("sunrise")
+            st = d.get("sunset")
+            try:
+                if st:
+                    t = datetime.fromisoformat(st)
+                    sunset_mins.append(t.hour * 60 + t.minute)
+                if sr and st:
+                    rise = datetime.fromisoformat(sr)
+                    sset = datetime.fromisoformat(st)
+                    diff = (sset - rise).total_seconds() / 60
+                    if diff > 0:
+                        daylight_mins.append(diff)
+            except (ValueError, TypeError):
+                pass
+        avg_sunset_min = round(sum(sunset_mins) / len(sunset_mins)) if sunset_mins else None
+        avg_daylight_hours = round(sum(daylight_mins) / len(daylight_mins) / 60, 1) if daylight_mins else None
+
+        result.append({
+            "month": ym,
+            "days_in_data": n,
+            "sunshine_hours": round(sunshine_sec / 3600, 1),
+            "rainy_days": rainy,
+            "snow_days": snowy,
+            "overcast_days": overcast,
+            "avg_high": avg_high,
+            "avg_low": avg_low,
+            "freezing_days": freezing,
+            "hot_days": hot,
+            "sticky_days": sticky,
+            "avg_sunset_min": avg_sunset_min,
+            "avg_daylight_hours": avg_daylight_hours,
+        })
+    return result
+
+
+def _score_month(m1, m2):
+    """Score two monthly metric dicts. Returns (loc1_pts, loc2_pts, ties)."""
+    s1, s2, ties = 0, 0, 0
+
+    def _tally(better1):
+        """better1: True=loc1 wins, False=loc2 wins, None=tie."""
+        nonlocal s1, s2, ties
+        if better1 is True:
+            s1 += 1
+        elif better1 is False:
+            s2 += 1
+        else:
+            ties += 1
+
+    # More sunshine is better
+    _tally(True if m1["sunshine_hours"] > m2["sunshine_hours"]
+           else False if m2["sunshine_hours"] > m1["sunshine_hours"] else None)
+
+    # Fewer rainy days is better
+    _tally(True if m1["rainy_days"] < m2["rainy_days"]
+           else False if m2["rainy_days"] < m1["rainy_days"] else None)
+
+    # More overcast days (dry overcast) is better
+    _tally(True if m1["overcast_days"] > m2["overcast_days"]
+           else False if m2["overcast_days"] > m1["overcast_days"] else None)
+
+    # Fewer snow days (skip if both 0)
+    if m1["snow_days"] + m2["snow_days"] > 0:
+        _tally(True if m1["snow_days"] < m2["snow_days"]
+               else False if m2["snow_days"] < m1["snow_days"] else None)
+
+    # Fewer freezing days (skip if both 0)
+    if m1["freezing_days"] + m2["freezing_days"] > 0:
+        _tally(True if m1["freezing_days"] < m2["freezing_days"]
+               else False if m2["freezing_days"] < m1["freezing_days"] else None)
+
+    # Fewer hot days (skip if both 0)
+    if m1["hot_days"] + m2["hot_days"] > 0:
+        _tally(True if m1["hot_days"] < m2["hot_days"]
+               else False if m2["hot_days"] < m1["hot_days"] else None)
+
+    # Fewer sticky days — feels-like 100°F+ (skip if both 0)
+    if m1["sticky_days"] + m2["sticky_days"] > 0:
+        _tally(True if m1["sticky_days"] < m2["sticky_days"]
+               else False if m2["sticky_days"] < m1["sticky_days"] else None)
+
+    # More daylight hours (skip if either missing)
+    if m1.get("avg_daylight_hours") is not None and m2.get("avg_daylight_hours") is not None:
+        _tally(True if m1["avg_daylight_hours"] > m2["avg_daylight_hours"]
+               else False if m2["avg_daylight_hours"] > m1["avg_daylight_hours"] else None)
+
+    # Later sunset (need 10+ min difference to count)
+    if m1.get("avg_sunset_min") is not None and m2.get("avg_sunset_min") is not None:
+        diff = m1["avg_sunset_min"] - m2["avg_sunset_min"]
+        _tally(True if diff >= 10 else False if diff <= -10 else None)
+
+    return s1, s2, ties
+
+
+def _get_all_known_locations():
+    """Get saved locations + locations referenced by comparisons."""
+    settings = _load_settings()
+    locs = [Location.from_dict(d) for d in settings.get("locations", [DEFAULT_LOCATION])]
+    seen_keys = {l.key for l in locs}
+    for comp in settings.get("comparisons", []):
+        for loc_data in [comp.get("loc1"), comp.get("loc2")]:
+            if loc_data and "name" in loc_data:
+                loc = Location.from_dict(loc_data)
+                if loc.key not in seen_keys:
+                    locs.append(loc)
+                    seen_keys.add(loc.key)
+    return locs
+
+
+def _build_comparison(lat1, lon1, lat2, lon2):
+    """Orchestrate incremental fetch, aggregate, and score for two locations."""
+    cache_key = _comparison_cache_key(lat1, lon1, lat2, lon2)
+    comp_cache = _load_comparison()
+    entry = comp_cache.get(cache_key, {})
+
+    loc1_key = _comparison_loc_key(lat1, lon1)
+    loc2_key = _comparison_loc_key(lat2, lon2)
+
+    # Find locations from saved + comparison locations
+    locations = _get_all_known_locations()
+    loc1_obj = next((l for l in locations if l.key == loc1_key), None)
+    loc2_obj = next((l for l in locations if l.key == loc2_key), None)
+    if not loc1_obj or not loc2_obj:
+        return None
+
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Window: 5 full calendar years back + current year through last complete month
+    now = datetime.now()
+    end_month = now.replace(day=1) - timedelta(days=1)  # last day of prev month
+    start_month = datetime(now.year - 5, 1, 1)           # Jan 1, five years ago
+    window_start = start_month.strftime("%Y-%m-%d")
+    window_end = end_month.strftime("%Y-%m-%d")
+
+    # Incremental fetch for each location
+    for loc_key, loc_obj, days_field in [
+        (loc1_key, loc1_obj, "loc1_days"),
+        (loc2_key, loc2_obj, "loc2_days"),
+    ]:
+        existing_days = entry.get(days_field, [])
+        # If cached records lack apparent_high, re-fetch everything
+        if existing_days and "apparent_high" not in existing_days[0]:
+            existing_days = []
+            entry[days_field] = []
+
+        existing_dates = {d["date"] for d in existing_days}
+
+        # Backfill: fetch earlier dates if window expanded
+        if existing_days:
+            earliest = min(d["date"] for d in existing_days)
+            if window_start < earliest:
+                backfill_end = (datetime.strptime(earliest, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+                try:
+                    backfill = fetch_comparison_historical(loc_obj, window_start, backfill_end)
+                    for rec in backfill:
+                        if rec["date"] not in existing_dates:
+                            existing_days.append(rec)
+                            existing_dates.add(rec["date"])
+                    log.info("Backfilled %d comparison days for %s (%s to %s)",
+                             len(backfill), loc_obj.name, window_start, backfill_end)
+                except Exception:
+                    log.exception("Failed to backfill comparison data for %s", loc_obj.name)
+
+        # Forward fill: fetch new dates since last cached
+        if existing_days:
+            last_date = max(d["date"] for d in existing_days)
+            fetch_start = (datetime.strptime(last_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        else:
+            fetch_start = window_start
+
+        if fetch_start <= yesterday:
+            try:
+                new_records = fetch_comparison_historical(loc_obj, fetch_start, yesterday)
+                for rec in new_records:
+                    if rec["date"] not in existing_dates:
+                        existing_days.append(rec)
+                log.info("Fetched %d comparison days for %s (%s to %s)",
+                         len(new_records), loc_obj.name, fetch_start, yesterday)
+            except Exception:
+                log.exception("Failed to fetch comparison data for %s", loc_obj.name)
+
+        existing_days.sort(key=lambda r: r["date"])
+        entry[days_field] = existing_days
+
+    entry["loc1_key"] = loc1_key
+    entry["loc2_key"] = loc2_key
+    comp_cache[cache_key] = entry
+    _save_comparison(comp_cache)
+
+    # Filter to 12-month window and aggregate
+    loc1_window = [d for d in entry.get("loc1_days", []) if window_start <= d["date"] <= window_end]
+    loc2_window = [d for d in entry.get("loc2_days", []) if window_start <= d["date"] <= window_end]
+
+    months1 = _aggregate_monthly(loc1_window)
+    months2 = _aggregate_monthly(loc2_window)
+
+    # Build month-by-month comparison
+    months1_map = {m["month"]: m for m in months1}
+    months2_map = {m["month"]: m for m in months2}
+    all_months = sorted(set(list(months1_map.keys()) + list(months2_map.keys())))
+
+    loc1_wins = 0
+    loc2_wins = 0
+    month_results = []
+
+    for ym in all_months:
+        m1 = months1_map.get(ym)
+        m2 = months2_map.get(ym)
+        if not m1 or not m2:
+            continue
+        s1, s2, metric_ties = _score_month(m1, m2)
+        winner = "loc1" if s1 > s2 else "loc2" if s2 > s1 else "tie"
+        if winner == "loc1":
+            loc1_wins += 1
+        elif winner == "loc2":
+            loc2_wins += 1
+
+        # Sunset difference (positive = loc1 later)
+        sunset_diff = None
+        if m1.get("avg_sunset_min") is not None and m2.get("avg_sunset_min") is not None:
+            sunset_diff = m1["avg_sunset_min"] - m2["avg_sunset_min"]
+
+        month_results.append({
+            "month": ym,
+            "loc1": m1,
+            "loc2": m2,
+            "loc1_score": s1,
+            "loc2_score": s2,
+            "metric_ties": metric_ties,
+            "winner": winner,
+            "sunset_diff": sunset_diff,
+        })
+
+    overall_winner = "loc1" if loc1_wins > loc2_wins else "loc2" if loc2_wins > loc1_wins else "tie"
+
+    return {
+        "loc1_name": loc1_obj.name,
+        "loc2_name": loc2_obj.name,
+        "loc1_key": loc1_key,
+        "loc2_key": loc2_key,
+        "loc1_wins": loc1_wins,
+        "loc2_wins": loc2_wins,
+        "overall_winner": overall_winner,
+        "months": month_results,
+        "window_start": window_start,
+        "window_end": window_end,
+    }
 
 
 # ── NWS Overlay ───────────────────────────────────────────────────────
@@ -328,6 +635,58 @@ def api_alerts():
         return jsonify({"error": "lat and lon required"}), 400
     alerts = fetch_alerts(lat, lon)
     return jsonify(alerts)
+
+
+@app.route("/api/comparison")
+def api_comparison():
+    """12-month weather comparison between two locations."""
+    lat1 = request.args.get("lat1", type=float)
+    lon1 = request.args.get("lon1", type=float)
+    lat2 = request.args.get("lat2", type=float)
+    lon2 = request.args.get("lon2", type=float)
+    if None in (lat1, lon1, lat2, lon2):
+        return jsonify({"error": "lat1, lon1, lat2, lon2 required"}), 400
+
+    result = _build_comparison(lat1, lon1, lat2, lon2)
+    if result is None:
+        return jsonify({"error": "Locations not found in settings"}), 404
+    return jsonify(result)
+
+
+@app.route("/api/comparison/settings", methods=["POST"])
+def api_comparison_settings():
+    """Save comparison location preferences."""
+    data = request.get_json()
+    if not data or "loc1" not in data or "loc2" not in data:
+        return jsonify({"error": "loc1 and loc2 required"}), 400
+    settings = _load_settings()
+    settings["comparison"] = {"loc1": data["loc1"], "loc2": data["loc2"]}
+    _save_settings(settings)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings/comparisons", methods=["POST"])
+def api_save_comparisons():
+    """Save comparisons list."""
+    data = request.get_json()
+    if not data or "comparisons" not in data:
+        return jsonify({"error": "comparisons required"}), 400
+    settings = _load_settings()
+    settings["comparisons"] = data["comparisons"]
+    _save_settings(settings)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings/card-order", methods=["POST"])
+def api_save_card_order():
+    """Save dashboard card display order."""
+    data = request.get_json()
+    if not data or "card_order" not in data:
+        return jsonify({"error": "card_order required"}), 400
+    settings = _load_settings()
+    settings["card_order"] = data["card_order"]
+    _save_settings(settings)
+    return jsonify({"ok": True})
 
 
 # ── Startup ───────────────────────────────────────────────────────────

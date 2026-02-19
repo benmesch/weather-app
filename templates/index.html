@@ -44,8 +44,8 @@
                 <button class="close-btn" id="settings-close">&times;</button>
             </div>
             <div class="settings-section">
-                <h3>Locations</h3>
-                <div id="settings-locations"></div>
+                <h3>Cards</h3>
+                <div id="settings-cards"></div>
             </div>
         </div>
     </div>
@@ -58,6 +58,57 @@
                 <button class="close-btn" id="history-close">&times;</button>
             </div>
             <div id="history-content"></div>
+        </div>
+    </div>
+
+    <!-- Comparison overlay -->
+    <div id="comparison-overlay" class="overlay hidden">
+        <div class="overlay-content overlay-content-wide">
+            <div class="overlay-header">
+                <h2 id="comparison-title">Weather Comparison</h2>
+                <button class="close-btn" id="comparison-close">&times;</button>
+            </div>
+            <div id="comparison-content"></div>
+        </div>
+    </div>
+
+    <!-- Action picker (+ button) -->
+    <div id="add-action-overlay" class="overlay hidden">
+        <div class="overlay-content">
+            <div class="overlay-header">
+                <h2>Add</h2>
+                <button class="close-btn" id="add-action-close">&times;</button>
+            </div>
+            <button class="add-action-btn" id="add-action-location">Add Location</button>
+            <button class="add-action-btn" id="add-action-comparison">Add Comparison</button>
+        </div>
+    </div>
+
+    <!-- Add Comparison overlay -->
+    <div id="add-comparison-overlay" class="overlay hidden">
+        <div class="overlay-content">
+            <div class="overlay-header">
+                <h2>Add Comparison</h2>
+                <button class="close-btn" id="add-comparison-close">&times;</button>
+            </div>
+            <div class="add-comp-slot">
+                <label class="add-comp-label">Location 1</label>
+                <select id="add-comp-sel-1" class="comp-select"></select>
+                <div id="add-comp-search-1" class="add-comp-search hidden">
+                    <input type="text" id="add-comp-search-input-1" class="add-comp-search-input" placeholder="Search city..." autocomplete="off">
+                    <div id="add-comp-search-results-1" class="add-comp-search-results"></div>
+                </div>
+            </div>
+            <div class="add-comp-vs-divider">vs</div>
+            <div class="add-comp-slot">
+                <label class="add-comp-label">Location 2</label>
+                <select id="add-comp-sel-2" class="comp-select"></select>
+                <div id="add-comp-search-2" class="add-comp-search hidden">
+                    <input type="text" id="add-comp-search-input-2" class="add-comp-search-input" placeholder="Search city..." autocomplete="off">
+                    <div id="add-comp-search-results-2" class="add-comp-search-results"></div>
+                </div>
+            </div>
+            <button class="add-comp-save-btn" id="add-comp-save">Add Comparison</button>
         </div>
     </div>
 

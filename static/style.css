@@ -824,6 +824,7 @@ header h1 {
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    padding-bottom: var(--kb-offset, 0px);
 }
 
 .overlay-content {
@@ -1157,4 +1158,359 @@ header h1 {
     font-weight: 500;
     color: var(--text);
     opacity: 0.7;
+}
+
+/* ── Weather Comparison ──────────────────────────────────────── */
+.comparison-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    border-left: 4px solid var(--accent);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.comparison-card:active { transform: scale(0.98); }
+
+.comparison-card-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.comparison-card-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.comparison-card-sub {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+.comparison-card-arrow {
+    font-size: 22px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.comparison-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.comp-select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+}
+
+.comp-select:focus { border-color: var(--accent); }
+
+.comp-vs {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.comparison-overall {
+    background: var(--surface-alt);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 14px;
+    text-align: center;
+}
+
+.comparison-overall-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.comparison-overall-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.comparison-month-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+}
+
+.comparison-month-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.comparison-month-body {
+    display: none;
+    margin-top: 10px;
+}
+.comparison-month-card.expanded .comparison-month-body {
+    display: block;
+}
+.comp-chevron {
+    font-size: 14px;
+    opacity: 0.5;
+    transition: transform 0.2s;
+    margin-left: 6px;
+}
+.comparison-month-card.expanded .comp-chevron,
+.comparison-sweep-group.expanded > .comparison-sweep-header .comp-chevron {
+    transform: rotate(90deg);
+}
+
+.comparison-sweep-group {
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+}
+.comparison-sweep-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.comparison-sweep-body {
+    display: none;
+    margin-top: 10px;
+}
+.comparison-sweep-group.expanded > .comparison-sweep-body {
+    display: block;
+}
+
+.comparison-chart-card {
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+}
+.comp-chart {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.comp-chart text {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.comp-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 8px;
+}
+.comp-chart-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.comp-chart-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.comparison-month-label {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.comparison-month-winner {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.comparison-month-sunset {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.comp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.comp-table thead th {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+.comp-table thead th:first-child { text-align: left; }
+.comp-table thead th:last-child { text-align: right; }
+.comp-table thead th:nth-child(2) { text-align: center; }
+
+.comp-table thead th.col-winner {
+    color: var(--accent);
+}
+
+.comp-table td {
+    padding: 4px;
+    font-weight: 500;
+}
+
+.comp-table td:first-child { text-align: left; }
+.comp-table td:last-child { text-align: right; }
+
+.comp-table .comp-label {
+    text-align: center;
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* ── Action Picker (+ button) ────────────────────────────────── */
+.add-action-btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.add-action-btn:active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+/* ── Add Comparison Overlay ──────────────────────────────────── */
+.add-comp-slot {
+    margin-bottom: 8px;
+}
+
+.add-comp-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.add-comp-vs-divider {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin: 4px 0;
+}
+
+.add-comp-search {
+    margin-top: 6px;
+}
+
+.add-comp-search-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+}
+
+.add-comp-search-input:focus {
+    border-color: var(--accent);
+}
+
+.add-comp-search-results {
+    max-height: 180px;
+    overflow-y: auto;
+    margin-top: 4px;
+}
+
+.add-comp-save-btn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 12px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.add-comp-save-btn:active {
+    opacity: 0.85;
+}
+
+/* ── Settings Comparison Item ────────────────────────────────── */
+.settings-comp-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-comp-names {
+    font-size: 14px;
+}
+
+.settings-comp-none {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding: 8px 0;
+}
+
+.settings-comp-icon {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-alt);
+    flex-shrink: 0;
 }
