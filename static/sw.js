@@ -1,9 +1,22 @@
-const CACHE_NAME = "weather-v43";
+const CACHE_NAME = "weather-v49";
 const SHELL_ASSETS = [
     "/",
     "/static/style.css",
-    "/static/app.js",
     "/static/manifest.json",
+    "/static/js/app.js",
+    "/static/js/state.js",
+    "/static/js/nav.js",
+    "/static/js/utils.js",
+    "/static/js/api.js",
+    "/static/js/routing.js",
+    "/static/js/dashboard.js",
+    "/static/js/detail.js",
+    "/static/js/history.js",
+    "/static/js/comparison.js",
+    "/static/js/search.js",
+    "/static/js/add-comparison.js",
+    "/static/js/settings.js",
+    "/static/js/gestures.js",
 ];
 
 // Install: cache shell assets

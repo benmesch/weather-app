@@ -1514,3 +1514,208 @@ header h1 {
     background: var(--surface-alt);
     flex-shrink: 0;
 }
+
+.settings-comp-config-btn {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Comparison Config Popup ─────────────────────────────────── */
+.comp-config-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.comp-config-row:last-child {
+    border-bottom: none;
+}
+
+.comp-config-name {
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.comp-config-section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 14px;
+    margin-bottom: 8px;
+}
+
+.comp-config-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.comp-config-metric-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 14px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.metric-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+
+.comp-config-metric-row[data-mode="scored"] .metric-toggle {
+    background: #4caf50;
+    color: #fff;
+}
+
+.comp-config-metric-row[data-mode="display"] .metric-toggle {
+    background: #ff9800;
+    color: #fff;
+}
+
+.comp-config-metric-row[data-mode="hidden"] .metric-toggle {
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+}
+
+.comp-config-metric-row[data-mode="hidden"] span:last-child {
+    opacity: 0.5;
+}
+
+/* ── Location Config Popup ─────────────────────────────────── */
+.settings-loc-emoji-badge {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-alt);
+    flex-shrink: 0;
+}
+
+.settings-loc-config-btn {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.loc-config-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.loc-config-row:last-child {
+    border-bottom: none;
+}
+
+.loc-config-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    min-width: 50px;
+}
+
+.loc-config-display-name-input {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-alt);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+}
+
+.loc-config-original {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding-top: 4px;
+}
+
+/* ── Comparison View Toggle ──────────────────────────────────── */
+.comp-view-toggle {
+    display: flex;
+    background: var(--surface-alt);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    margin-bottom: 12px;
+}
+
+.comp-view-btn {
+    flex: 1;
+    padding: 8px 4px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.comp-view-btn.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* ── Comparison Month Groups (By Month view) ─────────────────── */
+.comparison-month-group {
+    background: var(--surface-alt);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 10px;
+}
+
+.comparison-month-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.comparison-month-group-label {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.comparison-month-group-record {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.comparison-month-group-body {
+    display: none;
+    margin-top: 10px;
+}
+
+.comparison-month-group.expanded > .comparison-month-group-body {
+    display: block;
+}
+
+.comparison-month-group.expanded > .comparison-month-group-header .comp-chevron {
+    transform: rotate(90deg);
+}

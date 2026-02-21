@@ -40,6 +40,7 @@ _SETTINGS_FILE = _BASE_DIR / "settings.json"
 _HISTORY_FILE = _BASE_DIR / "history.json"
 _HISTORY_DAYS = 60
 _COMPARISON_FILE = _BASE_DIR / "comparison_cache.json"
+_comparison_lock = threading.Lock()
 
 
 # ── Settings ──────────────────────────────────────────────────────────
@@ -112,8 +113,10 @@ def _load_comparison():
 
 
 def _save_comparison(data):
-    with open(_COMPARISON_FILE, "w") as f:
+    tmp = _COMPARISON_FILE.with_suffix(".tmp")
+    with open(tmp, "w") as f:
         json.dump(data, f)
+    tmp.replace(_COMPARISON_FILE)
 
 
 def _comparison_loc_key(lat, lon):
@@ -154,6 +157,15 @@ def _aggregate_monthly(daily_records):
         freezing = sum(1 for d in days if d.get("low") is not None and d["low"] <= 32)
         hot = sum(1 for d in days if d.get("high") is not None and d["high"] >= 90)
         sticky = sum(1 for d in days if d.get("apparent_high") is not None and d["apparent_high"] >= 100)
+        # Cozy overcast: overcast + high > 50 + feels-like high < 90
+        cozy_overcast = sum(
+            1 for d in days
+            if d.get("weather_code") == 3
+            and (d.get("precip") or 0) <= 0.01
+            and (d.get("snowfall") or 0) <= 0
+            and d.get("high") is not None and d["high"] > 50
+            and (d.get("apparent_high") is None or d["apparent_high"] < 90)
+        )
 
         # Average sunset time and daylight hours
         sunset_mins = []
@@ -188,15 +200,20 @@ def _aggregate_monthly(daily_records):
             "freezing_days": freezing,
             "hot_days": hot,
             "sticky_days": sticky,
+            "cozy_overcast_days": cozy_overcast,
             "avg_sunset_min": avg_sunset_min,
             "avg_daylight_hours": avg_daylight_hours,
         })
     return result
 
 
-def _score_month(m1, m2):
-    """Score two monthly metric dicts. Returns (loc1_pts, loc2_pts, ties)."""
+def _score_month(m1, m2, hidden=None):
+    """Score two monthly metric dicts. Returns (loc1_pts, loc2_pts, ties).
+
+    ``hidden`` is an optional set of metric keys to skip when scoring.
+    """
     s1, s2, ties = 0, 0, 0
+    hidden = hidden or set()
 
     def _tally(better1):
         """better1: True=loc1 wins, False=loc2 wins, None=tie."""
@@ -209,46 +226,61 @@ def _score_month(m1, m2):
             ties += 1
 
     # More sunshine is better
-    _tally(True if m1["sunshine_hours"] > m2["sunshine_hours"]
-           else False if m2["sunshine_hours"] > m1["sunshine_hours"] else None)
+    if "sunshine_hours" not in hidden:
+        _tally(True if m1["sunshine_hours"] > m2["sunshine_hours"]
+               else False if m2["sunshine_hours"] > m1["sunshine_hours"] else None)
 
     # Fewer rainy days is better
-    _tally(True if m1["rainy_days"] < m2["rainy_days"]
-           else False if m2["rainy_days"] < m1["rainy_days"] else None)
+    if "rainy_days" not in hidden:
+        _tally(True if m1["rainy_days"] < m2["rainy_days"]
+               else False if m2["rainy_days"] < m1["rainy_days"] else None)
 
     # More overcast days (dry overcast) is better
-    _tally(True if m1["overcast_days"] > m2["overcast_days"]
-           else False if m2["overcast_days"] > m1["overcast_days"] else None)
+    if "overcast_days" not in hidden:
+        _tally(True if m1["overcast_days"] > m2["overcast_days"]
+               else False if m2["overcast_days"] > m1["overcast_days"] else None)
+
+    # More cozy overcast days (skip if both 0)
+    if "cozy_overcast_days" not in hidden:
+        if m1.get("cozy_overcast_days", 0) + m2.get("cozy_overcast_days", 0) > 0:
+            _tally(True if m1.get("cozy_overcast_days", 0) > m2.get("cozy_overcast_days", 0)
+                   else False if m2.get("cozy_overcast_days", 0) > m1.get("cozy_overcast_days", 0) else None)
 
     # Fewer snow days (skip if both 0)
-    if m1["snow_days"] + m2["snow_days"] > 0:
-        _tally(True if m1["snow_days"] < m2["snow_days"]
-               else False if m2["snow_days"] < m1["snow_days"] else None)
+    if "snow_days" not in hidden:
+        if m1["snow_days"] + m2["snow_days"] > 0:
+            _tally(True if m1["snow_days"] < m2["snow_days"]
+                   else False if m2["snow_days"] < m1["snow_days"] else None)
 
     # Fewer freezing days (skip if both 0)
-    if m1["freezing_days"] + m2["freezing_days"] > 0:
-        _tally(True if m1["freezing_days"] < m2["freezing_days"]
-               else False if m2["freezing_days"] < m1["freezing_days"] else None)
+    if "freezing_days" not in hidden:
+        if m1["freezing_days"] + m2["freezing_days"] > 0:
+            _tally(True if m1["freezing_days"] < m2["freezing_days"]
+                   else False if m2["freezing_days"] < m1["freezing_days"] else None)
 
     # Fewer hot days (skip if both 0)
-    if m1["hot_days"] + m2["hot_days"] > 0:
-        _tally(True if m1["hot_days"] < m2["hot_days"]
-               else False if m2["hot_days"] < m1["hot_days"] else None)
+    if "hot_days" not in hidden:
+        if m1["hot_days"] + m2["hot_days"] > 0:
+            _tally(True if m1["hot_days"] < m2["hot_days"]
+                   else False if m2["hot_days"] < m1["hot_days"] else None)
 
     # Fewer sticky days — feels-like 100°F+ (skip if both 0)
-    if m1["sticky_days"] + m2["sticky_days"] > 0:
-        _tally(True if m1["sticky_days"] < m2["sticky_days"]
-               else False if m2["sticky_days"] < m1["sticky_days"] else None)
+    if "sticky_days" not in hidden:
+        if m1["sticky_days"] + m2["sticky_days"] > 0:
+            _tally(True if m1["sticky_days"] < m2["sticky_days"]
+                   else False if m2["sticky_days"] < m1["sticky_days"] else None)
 
     # More daylight hours (skip if either missing)
-    if m1.get("avg_daylight_hours") is not None and m2.get("avg_daylight_hours") is not None:
-        _tally(True if m1["avg_daylight_hours"] > m2["avg_daylight_hours"]
-               else False if m2["avg_daylight_hours"] > m1["avg_daylight_hours"] else None)
+    if "avg_daylight_hours" not in hidden:
+        if m1.get("avg_daylight_hours") is not None and m2.get("avg_daylight_hours") is not None:
+            _tally(True if m1["avg_daylight_hours"] > m2["avg_daylight_hours"]
+                   else False if m2["avg_daylight_hours"] > m1["avg_daylight_hours"] else None)
 
     # Later sunset (need 10+ min difference to count)
-    if m1.get("avg_sunset_min") is not None and m2.get("avg_sunset_min") is not None:
-        diff = m1["avg_sunset_min"] - m2["avg_sunset_min"]
-        _tally(True if diff >= 10 else False if diff <= -10 else None)
+    if "avg_sunset_min" not in hidden:
+        if m1.get("avg_sunset_min") is not None and m2.get("avg_sunset_min") is not None:
+            diff = m1["avg_sunset_min"] - m2["avg_sunset_min"]
+            _tally(True if diff > 10 else False if diff < -10 else None)
 
     return s1, s2, ties
 
@@ -268,7 +300,7 @@ def _get_all_known_locations():
     return locs
 
 
-def _build_comparison(lat1, lon1, lat2, lon2):
+def _build_comparison(lat1, lon1, lat2, lon2, hidden=None):
     """Orchestrate incremental fetch, aggregate, and score for two locations."""
     cache_key = _comparison_cache_key(lat1, lon1, lat2, lon2)
     comp_cache = _load_comparison()
@@ -345,8 +377,10 @@ def _build_comparison(lat1, lon1, lat2, lon2):
 
     entry["loc1_key"] = loc1_key
     entry["loc2_key"] = loc2_key
-    comp_cache[cache_key] = entry
-    _save_comparison(comp_cache)
+    with _comparison_lock:
+        comp_cache = _load_comparison()
+        comp_cache[cache_key] = entry
+        _save_comparison(comp_cache)
 
     # Filter to 12-month window and aggregate
     loc1_window = [d for d in entry.get("loc1_days", []) if window_start <= d["date"] <= window_end]
@@ -369,7 +403,7 @@ def _build_comparison(lat1, lon1, lat2, lon2):
         m2 = months2_map.get(ym)
         if not m1 or not m2:
             continue
-        s1, s2, metric_ties = _score_month(m1, m2)
+        s1, s2, metric_ties = _score_month(m1, m2, hidden=hidden)
         winner = "loc1" if s1 > s2 else "loc2" if s2 > s1 else "tie"
         if winner == "loc1":
             loc1_wins += 1
@@ -647,7 +681,10 @@ def api_comparison():
     if None in (lat1, lon1, lat2, lon2):
         return jsonify({"error": "lat1, lon1, lat2, lon2 required"}), 400
 
-    result = _build_comparison(lat1, lon1, lat2, lon2)
+    hidden_raw = request.args.get("hidden", "")
+    hidden = set(h.strip() for h in hidden_raw.split(",") if h.strip()) if hidden_raw else None
+
+    result = _build_comparison(lat1, lon1, lat2, lon2, hidden=hidden)
     if result is None:
         return jsonify({"error": "Locations not found in settings"}), 404
     return jsonify(result)
