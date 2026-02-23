@@ -100,6 +100,18 @@ function renderCurrent(w) {
     const icon = c.weather_icon || "";
     const desc = c.weather_desc || "";
 
+    // Sun/shade feels-like
+    const feelsSun = c.feels_like_sun != null ? Math.round(c.feels_like_sun) : null;
+    const feelsShade = c.feels_like_shade != null ? Math.round(c.feels_like_shade) : null;
+    let feelsStr;
+    if (feelsSun != null && feelsShade != null && c.is_day && feelsSun !== feelsShade) {
+        feelsStr = `Feels like ${feelsSun}° sun / ${feelsShade}° shade`;
+    } else if (feelsShade != null) {
+        feelsStr = `Feels like ${feelsShade}°`;
+    } else {
+        feelsStr = `Feels like ${feels}°`;
+    }
+
     let forecastHtml = "";
     if (w.forecast_text && w.forecast_text.length) {
         const count = Math.min(w.forecast_text.length, 3);
@@ -137,7 +149,7 @@ function renderCurrent(w) {
         <div class="current-icon">${icon}</div>
         <div class="current-temp">${temp}°</div>
         <div class="current-desc">${esc(desc)}</div>
-        <div class="current-feels">Feels like ${feels}°</div>
+        <div class="current-feels">${feelsStr}</div>
         ${sunrise ? `<div class="sun-times"><span>Sunrise ${sunrise}</span>${daylight ? `<span class="sun-daylight">${daylight}</span>` : ""}<span>Sunset ${sunset}</span></div>` : ""}
         ${forecastHtml}
         <div class="current-details">
@@ -300,16 +312,25 @@ function renderHourly(w) {
 
         const time = isNow ? "Now" : formatTime(h.time);
         const temp = Math.round(h.temperature || 0);
-        const feels = Math.round(h.feels_like || 0);
+        const feelsSun = h.feels_like_sun != null ? Math.round(h.feels_like_sun) : null;
+        const feelsShade = h.feels_like_shade != null ? Math.round(h.feels_like_shade) : null;
+        const feels = feelsShade != null ? feelsShade : Math.round(h.feels_like || 0);
         const precip = Math.round(h.precipitation_prob || 0);
-        const showFeels = feels !== temp;
+        const showSunShade = h.is_day && feelsSun != null && feelsShade != null && feelsSun !== feelsShade;
+        const showFeels = !showSunShade && feels !== temp;
+        let feelsHtml = "";
+        if (showSunShade) {
+            feelsHtml = `<span class="hourly-feels">${feelsSun}° / ${feelsShade}°</span>`;
+        } else if (showFeels) {
+            feelsHtml = `<span class="hourly-feels">${feels}°</span>`;
+        }
         items += `
         <div class="hourly-item${isNow ? " now" : ""}">
             <span class="hourly-time">${time}</span>
             <span class="hourly-icon">${h.weather_icon || ""}</span>
             <div class="hourly-precip-bar"><div class="hourly-precip-fill" style="height:${precip}%"></div></div>
             <span class="hourly-temp">${temp}°</span>
-            ${showFeels ? `<span class="hourly-feels">${feels}°</span>` : ""}
+            ${feelsHtml}
             ${precip > 0 ? `<span class="hourly-precip">${precip}%</span>` : ""}
             ${h.wind_speed >= 5 ? `<span class="hourly-wind">${Math.round(h.wind_speed)} ${h.wind_direction || ""}</span>` : ""}
             ${h.cloud_cover != null && h.cloud_cover >= 50 ? `<span class="hourly-cloud">${Math.round(h.cloud_cover)}%\u2601</span>` : ""}

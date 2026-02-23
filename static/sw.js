@@ -1,4 +1,4 @@
-const CACHE_NAME = "weather-v49";
+const CACHE_NAME = "weather-v51";
 const SHELL_ASSETS = [
     "/",
     "/static/style.css",

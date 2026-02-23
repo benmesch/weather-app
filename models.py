@@ -47,6 +47,8 @@ class CurrentWeather:
     uv_index: float
     visibility: Optional[float] = None
     cloud_cover: Optional[float] = None
+    feels_like_sun: Optional[float] = None
+    feels_like_shade: Optional[float] = None
 
     def to_dict(self):
         return asdict(self)
@@ -68,6 +70,8 @@ class HourlyForecast:
     uv_index: float
     is_day: bool
     cloud_cover: Optional[float] = None
+    feels_like_sun: Optional[float] = None
+    feels_like_shade: Optional[float] = None
 
     def to_dict(self):
         return asdict(self)

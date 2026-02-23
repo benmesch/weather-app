@@ -44,7 +44,7 @@ export function renderDashboard() {
                     </div>
                     <div class="loc-card-details">
                         <span>H:${hi}° L:${lo}°</span>
-                        <span>Feels ${Math.round(cur.feels_like || 0)}°</span>
+                        <span>Feels ${Math.round(cur.is_day && cur.feels_like_sun != null ? cur.feels_like_sun : cur.feels_like_shade != null ? cur.feels_like_shade : cur.feels_like || 0)}°</span>
                         <span>Wind ${Math.round(cur.wind_speed || 0)} mph</span>
                         <span>${Math.round(cur.humidity || 0)}% Hum</span>
                         ${(cur.precipitation || 0) > 0 ? `<span class="loc-card-precip">${cur.precipitation}" rain</span>` : ""}

@@ -1,6 +1,7 @@
 """Open-Meteo API client for weather, air quality, geocoding, and historical data."""
 
 import logging
+import math
 from datetime import datetime, timedelta
 
 import requests
@@ -32,11 +33,13 @@ def fetch_weather(location):
             "temperature_2m", "apparent_temperature", "relative_humidity_2m",
             "wind_speed_10m", "wind_direction_10m", "precipitation",
             "weather_code", "is_day", "uv_index", "visibility", "cloud_cover",
+            "shortwave_radiation",
         ]),
         "hourly": ",".join([
             "temperature_2m", "apparent_temperature", "precipitation_probability",
             "precipitation", "weather_code", "wind_speed_10m", "wind_direction_10m",
             "relative_humidity_2m", "uv_index", "is_day", "cloud_cover",
+            "shortwave_radiation",
         ]),
         "daily": ",".join([
             "temperature_2m_max", "temperature_2m_min", "weather_code",
@@ -66,6 +69,7 @@ def fetch_current_only(location):
             "temperature_2m", "apparent_temperature", "relative_humidity_2m",
             "wind_speed_10m", "wind_direction_10m", "precipitation",
             "weather_code", "is_day", "uv_index", "visibility", "cloud_cover",
+            "shortwave_radiation",
         ]),
         "daily": "temperature_2m_max,temperature_2m_min",
         "forecast_days": 1,
@@ -191,6 +195,35 @@ def fetch_historical(location, start_date, end_date):
     return results
 
 
+def _compute_feels_like(temp_f, humidity, wind_mph, swr, is_day):
+    """Compute sun and shade feels-like temperatures.
+
+    Returns (sun_f, shade_f) in Fahrenheit.
+    Formula uses Steadman shade model + solar radiation add-on.
+    """
+    # Convert to metric
+    temp_c = (temp_f - 32) * 5 / 9
+    wind_ms = wind_mph * 0.44704 * 0.75  # 10m wind → ~2m estimate
+
+    # Vapor pressure (hPa) from RH and temp
+    e = (humidity / 100) * 6.105 * math.exp(17.27 * temp_c / (237.7 + temp_c))
+
+    # Shade feels-like (Steadman)
+    shade_c = temp_c + 0.348 * e - 0.70 * wind_ms - 4.25
+
+    # Sun add-on from shortwave radiation
+    sun_add_c = 0.0
+    if is_day and swr and swr > 0:
+        sun_add_c = 0.014 * swr / (0.08 * wind_ms + 1.5)
+
+    sun_c = shade_c + sun_add_c
+
+    # Convert back to F
+    shade_f = shade_c * 9 / 5 + 32
+    sun_f = sun_c * 9 / 5 + 32
+    return round(sun_f, 1), round(shade_f, 1)
+
+
 def parse_current(raw):
     """Parse current conditions from Open-Meteo response."""
     c = raw.get("current", {})
@@ -199,11 +232,18 @@ def parse_current(raw):
     code = c.get("weather_code", 0)
     is_day = bool(c.get("is_day", 1))
     desc, icon = get_wmo_info(code, is_day)
+
+    temp_f = c.get("temperature_2m", 0)
+    humidity = c.get("relative_humidity_2m", 0)
+    wind_mph = c.get("wind_speed_10m", 0)
+    swr = c.get("shortwave_radiation", 0)
+    sun_f, shade_f = _compute_feels_like(temp_f, humidity, wind_mph, swr, is_day)
+
     return CurrentWeather(
-        temperature=c.get("temperature_2m", 0),
+        temperature=temp_f,
         feels_like=c.get("apparent_temperature", 0),
-        humidity=c.get("relative_humidity_2m", 0),
-        wind_speed=c.get("wind_speed_10m", 0),
+        humidity=humidity,
+        wind_speed=wind_mph,
         wind_direction=degree_to_compass(c.get("wind_direction_10m")),
         precipitation=c.get("precipitation", 0),
         weather_code=code,
@@ -213,6 +253,8 @@ def parse_current(raw):
         uv_index=c.get("uv_index", 0),
         visibility=c.get("visibility"),
         cloud_cover=c.get("cloud_cover"),
+        feels_like_sun=sun_f,
+        feels_like_shade=shade_f,
     )
 
 
@@ -250,21 +292,29 @@ def parse_weather(raw, aqi_raw, location):
         code = hourly_data.get("weather_code", [])[i] if i < len(hourly_data.get("weather_code", [])) else 0
         is_day = bool(hourly_data.get("is_day", [])[i]) if i < len(hourly_data.get("is_day", [])) else True
         desc, icon = get_wmo_info(code, is_day)
+        h_temp = _safe_get(hourly_data, "temperature_2m", i, 0)
+        h_hum = _safe_get(hourly_data, "relative_humidity_2m", i, 0)
+        h_wind = _safe_get(hourly_data, "wind_speed_10m", i, 0)
+        h_swr = _safe_get(hourly_data, "shortwave_radiation", i, 0)
+        h_sun_f, h_shade_f = _compute_feels_like(h_temp, h_hum, h_wind, h_swr, is_day)
+
         hourly.append(HourlyForecast(
             time=t,
-            temperature=_safe_get(hourly_data, "temperature_2m", i, 0),
+            temperature=h_temp,
             feels_like=_safe_get(hourly_data, "apparent_temperature", i, 0),
             precipitation_prob=_safe_get(hourly_data, "precipitation_probability", i, 0),
             precipitation=_safe_get(hourly_data, "precipitation", i, 0),
             weather_code=code,
             weather_desc=desc,
             weather_icon=icon,
-            wind_speed=_safe_get(hourly_data, "wind_speed_10m", i, 0),
+            wind_speed=h_wind,
             wind_direction=degree_to_compass(_safe_get(hourly_data, "wind_direction_10m", i, None)),
-            humidity=_safe_get(hourly_data, "relative_humidity_2m", i, 0),
+            humidity=h_hum,
             uv_index=_safe_get(hourly_data, "uv_index", i, 0),
             is_day=is_day,
             cloud_cover=_safe_get(hourly_data, "cloud_cover", i, None),
+            feels_like_sun=h_sun_f,
+            feels_like_shade=h_shade_f,
         ))
 
     # Daily
