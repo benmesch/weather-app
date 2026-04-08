@@ -108,6 +108,25 @@ export function openSettings() {
             openCompConfig(ci);
         });
     });
+
+    // Refresh forecast button
+    const refreshBtn = document.getElementById("settings-refresh-forecast");
+    if (refreshBtn) {
+        refreshBtn.onclick = async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = "Refreshing...";
+            try {
+                await fetch("/api/refresh-forecast", { method: "POST" });
+                refreshBtn.textContent = "Refresh started — reload in ~30s";
+            } catch (e) {
+                refreshBtn.textContent = "Error — try again";
+            }
+            setTimeout(() => {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = "Refresh Forecast Data";
+            }, 30000);
+        };
+    }
 }
 
 function openLocConfig(li) {

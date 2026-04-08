@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -472,18 +473,25 @@ def _refresh_all_forecasts():
     locations = _get_locations()
     log.info("Refreshing forecasts for %d locations", len(locations))
     for loc in locations:
-        try:
-            raw = fetch_weather(loc)
-            aqi_raw = fetch_air_quality(loc)
-            data = parse_weather(raw, aqi_raw, loc)
-            _apply_nws_overlay(data, loc.lat, loc.lon, loc.name)
-            data.alerts = fetch_alerts(loc.lat, loc.lon)
-            data.forecast_text = fetch_forecast_text(loc.lat, loc.lon)
-            data.sun_moon = fetch_sun_moon(loc.lat, loc.lon, loc.timezone)
-            cache.set_forecast(loc.key, data)
-            log.info("Forecast updated for %s", loc.name)
-        except Exception:
-            log.exception("Failed to refresh forecast for %s", loc.name)
+        for attempt in range(3):
+            try:
+                raw = fetch_weather(loc)
+                aqi_raw = fetch_air_quality(loc)
+                data = parse_weather(raw, aqi_raw, loc)
+                _apply_nws_overlay(data, loc.lat, loc.lon, loc.name)
+                data.alerts = fetch_alerts(loc.lat, loc.lon)
+                data.forecast_text = fetch_forecast_text(loc.lat, loc.lon)
+                data.sun_moon = fetch_sun_moon(loc.lat, loc.lon, loc.timezone)
+                cache.set_forecast(loc.key, data)
+                log.info("Forecast updated for %s", loc.name)
+                break
+            except Exception:
+                if attempt < 2:
+                    log.warning("Forecast fetch attempt %d failed for %s, retrying in 5s...",
+                                attempt + 1, loc.name)
+                    time.sleep(5)
+                else:
+                    log.exception("Failed to refresh forecast for %s", loc.name)
 
 
 def _daily_history_append():
@@ -581,6 +589,13 @@ def api_refresh_current():
                 log.exception("Failed to refresh forecast text for %s", loc.name)
 
     return jsonify(results)
+
+
+@app.route("/api/refresh-forecast", methods=["POST"])
+def api_refresh_forecast():
+    """Trigger a full forecast refresh for all locations in the background."""
+    threading.Thread(target=_refresh_all_forecasts, daemon=True).start()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/locations/search")
